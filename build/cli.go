@@ -76,6 +76,10 @@ func NewFlags(fs *flag.FlagSet) *Flags {
 	fs.Var(goasm, "out", "assembly output")
 	f.printers = append(f.printers, goasm)
 
+	arm64asm := newPrinterValue(printer.NewARM64Asm, nil)
+	fs.Var(arm64asm, "arm64", "EXPERIMENTAL arm64 assembly output (lowered from amd64)")
+	f.printers = append(f.printers, arm64asm)
+
 	stubs := newPrinterValue(printer.NewStubs, nil)
 	fs.Var(stubs, "stubs", "go stub file")
 	f.printers = append(f.printers, stubs)
