@@ -627,10 +627,11 @@ func isConditionalBranch(i *ir.Instruction) bool {
 	return i.Opcode != "JMP" && strings.HasPrefix(i.Opcode, "J")
 }
 
-// branchMnemonic maps an x86 conditional-jump opcode (avo emits Go-canonical
-// names such as JEQ/JCS/JHI; Intel aliases kept for robustness) to the arm64
-// branch with the same semantics. The mapping is by meaning, so it is correct
-// despite x86/arm64 differing carry-flag conventions for subtraction.
+// branchMnemonic maps an x86 conditional-jump opcode to the arm64 branch with
+// the same meaning. avo uses the Go-canonical names (JEQ/JCS/JHI/...); the Intel
+// aliases are accepted too. Mapping by meaning is correct despite x86 and arm64
+// using opposite carry-flag conventions for subtraction, because the condition
+// names encode the intent, not the raw flag.
 func branchMnemonic(op string) string {
 	switch op {
 	case "JEQ", "JE", "JZ":
@@ -638,13 +639,13 @@ func branchMnemonic(op string) string {
 	case "JNE", "JNZ":
 		return "BNE"
 	case "JLT", "JL":
-		return "BLT"
+		return "BLT" // signed <
 	case "JLE":
-		return "BLE"
+		return "BLE" // signed <=
 	case "JGT", "JG":
-		return "BGT"
+		return "BGT" // signed >
 	case "JGE":
-		return "BGE"
+		return "BGE" // signed >=
 	case "JCS", "JB":
 		return "BLO" // unsigned <
 	case "JCC", "JAE", "JHS":
@@ -666,17 +667,19 @@ func branchMnemonic(op string) string {
 	}
 }
 
+// cmovCond maps an x86 CMOVcc opcode to its arm64 CSEL condition. Only EQ/NE are
+// exercised by the zstd generators today; the rest are by-construction.
 func cmovCond(op string) string {
 	switch op {
 	case "CMOVQEQ", "CMOVLEQ":
 		return "EQ"
 	case "CMOVQNE", "CMOVLNE":
 		return "NE"
-	case "CMOVQHI":
+	case "CMOVQHI", "CMOVLHI":
 		return "HI"
-	case "CMOVQCC", "CMOVQHS":
+	case "CMOVQCC", "CMOVQHS", "CMOVLCC", "CMOVLHS":
 		return "HS"
-	case "CMOVQCS", "CMOVQLO":
+	case "CMOVQCS", "CMOVQLO", "CMOVLCS", "CMOVLLO":
 		return "LO"
 	default:
 		panic(fmt.Sprintf("arm64: unsupported CMOV %q", op))
