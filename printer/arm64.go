@@ -50,6 +50,12 @@ import (
 type arm64 struct {
 	cfg Config
 	prnt.Generator
+
+	// pending buffers lowered instructions (opcode, operands) so a block can be
+	// flushed with operands column-aligned, matching the goasm printer (and thus
+	// asmfmt). clear tracks whether a blank line is already present.
+	pending [][2]string
+	clear   bool
 }
 
 // NewARM64Asm constructs a printer for writing Go arm64 assembly files by
@@ -144,12 +150,17 @@ func (p *arm64) function(f *ir.Function) {
 	}
 	p.Printf(", %s\n", textsize(f))
 
+	p.clear = true
 	nodes := f.Nodes
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
+			p.flush()
+			p.ensureclear()
 			p.Printf("%s:\n", n)
 		case *ir.Comment:
+			p.flush()
+			p.ensureclear()
 			for _, line := range n.Lines {
 				p.Printf("\t// %s\n", line)
 			}
@@ -164,15 +175,56 @@ func (p *arm64) function(f *ir.Function) {
 			default:
 				p.lower(n, flagSink(nodes, idx))
 			}
+			if n.IsTerminal || n.IsUnconditionalBranch() {
+				p.flush()
+			}
 		default:
 			panic("unexpected node type")
 		}
 	}
+	p.flush()
 }
 
-// emit prints a single arm64 instruction line.
+// emit buffers a single lowered arm64 instruction. The block is column-aligned
+// and written by flush(), matching the goasm printer's layout (and asmfmt).
 func (p *arm64) emit(format string, args ...interface{}) {
-	p.Printf("\t"+format+"\n", args...)
+	line := fmt.Sprintf(format, args...)
+	op, operands := line, ""
+	if i := strings.IndexByte(line, ' '); i >= 0 {
+		op, operands = line[:i], line[i+1:]
+	}
+	p.pending = append(p.pending, [2]string{op, operands})
+	p.clear = false
+}
+
+// flush writes the buffered instructions with operands aligned to a common
+// column (width of the widest opcode in the block), like the goasm printer.
+func (p *arm64) flush() {
+	if len(p.pending) == 0 {
+		return
+	}
+	width := 0
+	for _, in := range p.pending {
+		if in[1] != "" && len(in[0]) > width {
+			width = len(in[0])
+		}
+	}
+	for _, in := range p.pending {
+		if in[1] != "" {
+			p.Printf("\t%-*s%s\n", width+1, in[0], in[1])
+		} else {
+			p.Printf("\t%s\n", in[0])
+		}
+	}
+	p.pending = nil
+}
+
+// ensureclear emits a blank separator line unless one is already present.
+func (p *arm64) ensureclear() {
+	if !p.clear {
+		p.NL()
+		p.clear = true
+	}
 }
 
 // rename returns the arm64 syntax for a register operand.
