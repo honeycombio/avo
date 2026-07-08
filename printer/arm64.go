@@ -2,6 +2,7 @@ package printer
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mmcloughlin/avo/buildtags"
@@ -81,10 +82,11 @@ const (
 
 func (p *arm64) Print(f *ir.File) ([]byte, error) {
 	p.header(f)
+	bmi2 := bmi2Twins(f)
 	for _, s := range f.Sections {
 		switch s := s.(type) {
 		case *ir.Function:
-			p.function(s)
+			p.function(s, bmi2)
 		case *ir.Global:
 			p.global(s)
 		default:
@@ -92,6 +94,47 @@ func (p *arm64) Print(f *ir.File) ([]byte, error) {
 		}
 	}
 	return p.Result()
+}
+
+// logicalName strips the trailing _amd64/_bmi2 arch+feature suffixes from a
+// generated function name, yielding the architecture-independent base. The _safe
+// marker and everything before it are preserved, so a generic variant and its
+// BMI2 twin reduce to the same base (e.g. both foo_safe_amd64 and foo_safe_bmi2
+// yield foo_safe).
+func logicalName(name string) string {
+	for {
+		switch {
+		case strings.HasSuffix(name, "_bmi2"):
+			name = strings.TrimSuffix(name, "_bmi2")
+		case strings.HasSuffix(name, "_amd64"):
+			name = strings.TrimSuffix(name, "_amd64")
+		default:
+			return name
+		}
+	}
+}
+
+// arm64Name is the symbol emitted for a lowered function. A name carrying an
+// arch/feature suffix is renamed to <base>_arm64; a name with no such suffix is
+// architecture-independent and reused verbatim (the arm64 file selects it via a
+// build tag, as with the hand-written differential tests).
+func arm64Name(name string) string {
+	if !strings.Contains(name, "_amd64") && !strings.Contains(name, "bmi2") {
+		return name
+	}
+	return logicalName(name) + "_arm64"
+}
+
+// bmi2Twins returns the set of logical names that have a BMI2 variant, so the
+// generic twin can be dropped in favour of the BMI2 one (faster on arm64).
+func bmi2Twins(f *ir.File) map[string]bool {
+	twins := make(map[string]bool)
+	for _, s := range f.Sections {
+		if fn, ok := s.(*ir.Function); ok && strings.Contains(fn.Name, "bmi2") {
+			twins[logicalName(fn.Name)] = true
+		}
+	}
+	return twins
 }
 
 func (p *arm64) header(f *ir.File) {
@@ -128,20 +171,26 @@ func (p *arm64) global(g *ir.Global) {
 	p.Printf("GLOBL %s(SB), %s, $%d\n", g.Symbol, g.Attributes.Asm(), g.Size)
 }
 
-func (p *arm64) function(f *ir.Function) {
-	// arm64 has no BMI2; skip those variants. The generator emits both the
-	// generic-instruction ("_amd64") and BMI2 ("_bmi2") variants; arm64 uses the
-	// generic ones, renamed with an _arm64 suffix.
-	if strings.Contains(f.Name, "bmi2") {
+func (p *arm64) function(f *ir.Function, bmi2Twins map[string]bool) {
+	// On arm64 we emit one implementation per logical function. Where the
+	// generator produced both a generic ("_amd64") and a BMI2 ("_bmi2") variant,
+	// prefer the BMI2 one: arm64 has native, flag-free equivalents for the BMI2
+	// idioms (register shifts, wide multiply, bit-field extract) and they lower to
+	// faster code. The generic twin is skipped when a BMI2 twin exists; a function
+	// with a single variant is lowered as-is.
+	isBMI2 := strings.Contains(f.Name, "bmi2")
+	if !isBMI2 && bmi2Twins[logicalName(f.Name)] {
 		p.NL()
-		p.Comment("skipped " + f.Name + " (BMI2 not available on arm64)")
+		p.Comment("skipped " + f.Name + " (BMI2 twin preferred on arm64)")
 		return
 	}
-	name := strings.Replace(f.Name, "_amd64", "_arm64", 1)
+	name := arm64Name(f.Name)
 
 	p.NL()
 	p.Comment(f.Stub())
-	if len(f.ISA) > 0 {
+	// The BMI2 requirement does not survive lowering (the ops become native arm64
+	// instructions), so do not carry a misleading "Requires: BMI2" over.
+	if len(f.ISA) > 0 && !isBMI2 {
 		p.Comment("Requires: " + strings.Join(f.ISA, ", "))
 	}
 	p.Printf("TEXT %s%s(SB)", dot, name)
@@ -421,6 +470,18 @@ func (p *arm64) lower(i *ir.Instruction, flags bool) {
 	case "ROLQ":
 		p.lowerROL(ops[0], ops[1])
 
+	// ---- BMI2 flag-free shifts/rotate: SHIFTX count, src, dst ----
+	// arm64 register shifts are already flag-free and take an arbitrary count
+	// register, so these map one-to-one (the count is masked mod 64, matching x86).
+	case "SHLXQ":
+		p.lowerShiftX("LSL", ops[0], ops[1], ops[2])
+	case "SHRXQ":
+		p.lowerShiftX("LSR", ops[0], ops[1], ops[2])
+	case "SARXQ":
+		p.lowerShiftX("ASR", ops[0], ops[1], ops[2])
+	case "RORXQ":
+		p.lowerRORX(ops[0], ops[1], ops[2])
+
 	case "LEAQ":
 		p.lowerLEA(ops[0].(operand.Mem), operandReg(ops[1]))
 
@@ -437,6 +498,22 @@ func (p *arm64) lower(i *ir.Instruction, flags bool) {
 		p.emit("CLZ %s, %s", src, scratchVal)
 		p.emit("MOVD $63, %s", dst)
 		p.emit("SUB %s, %s, %s", scratchVal, dst, dst)
+
+	// ---- BMI2 bit-field ops: BZHI/BEXTR (counts assumed < 64, as in zstd) ----
+	case "BZHIQ":
+		p.lowerBZHI(ops[0], ops[1], ops[2])
+	case "BEXTRQ":
+		p.lowerBEXTR(ops[0], ops[1], ops[2])
+
+	// ---- multiplication ----
+	case "MULXQ":
+		p.lowerMULX(ops[0], ops[1], ops[2])
+	case "IMUL3Q":
+		p.lowerIMUL3(ops[0], ops[1], ops[2])
+	case "IMULQ":
+		p.lowerIMUL(ops)
+	case "MULQ":
+		p.lowerWideMul("UMULH", ops[0])
 
 	// ---- comparisons: always emit an arm64 flag-setter ----
 	// The compare must run at the operand width: a 64-bit CMP of registers whose
@@ -621,6 +698,127 @@ func (p *arm64) lowerROL(count, dst operand.Op) {
 	p.emit("ROR %s, %s, %s", scratchVal, d, d)
 }
 
+// srcRegInto returns a register name holding op's value, loading a memory operand
+// into the given scratch register first. Callers pass a scratch that is free for
+// the remainder of the lowering.
+func (p *arm64) srcRegInto(op operand.Op, scratch string) string {
+	if m, ok := op.(operand.Mem); ok {
+		p.emit("MOVD %s, %s", p.memAsm(m), scratch)
+		return scratch
+	}
+	return operandReg(op)
+}
+
+// lowerShiftX lowers a BMI2 flag-free shift "SHIFTX count, src, dst":
+// dst = src <shift> count. The count register is masked mod 64, as on x86.
+func (p *arm64) lowerShiftX(op string, count, src, dst operand.Op) {
+	s := p.srcRegInto(src, scratchVal)
+	p.emit("%s %s, %s, %s", op, operandReg(count), s, operandReg(dst))
+}
+
+// lowerRORX lowers "RORXQ imm, src, dst": dst = ror(src, imm) (flag-free).
+func (p *arm64) lowerRORX(imm, src, dst operand.Op) {
+	c, ok := immAsm(imm)
+	if !ok {
+		panic("arm64: RORXQ requires an immediate rotate")
+	}
+	n, err := strconv.ParseInt(strings.TrimPrefix(c, "$"), 0, 64)
+	if err != nil {
+		panic("arm64: bad RORX immediate " + c)
+	}
+	s := p.srcRegInto(src, scratchVal)
+	p.emit("ROR $%d, %s, %s", n&63, s, operandReg(dst))
+}
+
+// lowerBZHI lowers "BZHIQ count, src, dst": dst = src & ((1<<count)-1). count is
+// a register bit-count; zstd only uses counts < 64, for which the mask is exact
+// (arm64 shifts mask the amount mod 64, so count == 64 is not handled).
+func (p *arm64) lowerBZHI(count, src, dst operand.Op) {
+	s := p.srcRegInto(src, scratchAddr)
+	n := operandReg(count)
+	d := operandReg(dst)
+	p.emit("MOVD $1, %s", scratchVal)
+	p.emit("LSL %s, %s, %s", n, scratchVal, scratchVal) // 1 << count
+	p.emit("SUB $1, %s, %s", scratchVal, scratchVal)    // mask = (1<<count)-1
+	p.emit("AND %s, %s, %s", scratchVal, s, d)
+}
+
+// lowerBEXTR lowers "BEXTRQ ctrl, src, dst": with ctrl[7:0]=start and
+// ctrl[15:8]=len, dst = (src >> start) & ((1<<len)-1). start and len come from the
+// ctrl register at run time; zstd's control values keep both < 64. start and len
+// are extracted before any destination write so ctrl may alias dst.
+func (p *arm64) lowerBEXTR(ctrl, src, dst operand.Op) {
+	c := operandReg(ctrl)
+	d := operandReg(dst)
+	p.emit("UBFX $0, %s, $8, %s", c, scratchVal)  // start = ctrl[7:0]
+	p.emit("UBFX $8, %s, $8, %s", c, scratchAddr) // len   = ctrl[15:8]
+	s := p.srcRegInto(src, d)
+	p.emit("LSR %s, %s, %s", scratchVal, s, d)                    // dst = src >> start
+	p.emit("MOVD $1, %s", scratchVal)                             // start consumed; reuse
+	p.emit("LSL %s, %s, %s", scratchAddr, scratchVal, scratchVal) // 1 << len
+	p.emit("SUB $1, %s, %s", scratchVal, scratchVal)              // (1<<len)-1
+	p.emit("AND %s, %s, %s", scratchVal, d, d)                    // dst &= mask
+}
+
+// lowerMULX lowers "MULXQ src, lo, hi" (BMI2, flag-free): the 128-bit product
+// src * RDX has its low half written to lo and its high half to hi. The low half
+// is staged in scratch so lo/hi may alias src or RDX.
+func (p *arm64) lowerMULX(src, lo, hi operand.Op) {
+	dx := rename(reg.RDX)
+	s := p.srcRegInto(src, scratchAddr)
+	p.emit("MUL %s, %s, %s", s, dx, scratchVal)       // low  -> scratch
+	p.emit("UMULH %s, %s, %s", s, dx, operandReg(hi)) // high -> hi (s, dx intact)
+	p.emit("MOVD %s, %s", scratchVal, operandReg(lo)) // low  -> lo
+}
+
+// lowerIMUL3 lowers "IMUL3Q imm, src, dst": dst = src * imm. x86 sign-extends the
+// imm8/imm32 multiplier to 64 bits, so replicate that — otherwise a constant with
+// bit 31 set (e.g. the 0x9E3779B1 golden-ratio multiplier) would differ from the
+// amd64 result.
+func (p *arm64) lowerIMUL3(imm, src, dst operand.Op) {
+	c, ok := immAsm(imm)
+	if !ok {
+		panic("arm64: IMUL3Q requires an immediate multiplier")
+	}
+	v, err := strconv.ParseInt(strings.TrimPrefix(c, "$"), 0, 64)
+	if err != nil {
+		panic("arm64: bad IMUL3Q immediate " + c)
+	}
+	s := p.srcRegInto(src, scratchAddr)
+	p.emit("MOVD $%d, %s", int64(int32(v)), scratchVal) // materialize sign-extended imm32
+	p.emit("MUL %s, %s, %s", scratchVal, s, operandReg(dst))
+}
+
+// lowerIMUL lowers IMULQ in its 2-operand ("src, dst": dst *= src) and 1-operand
+// ("src": RDX:RAX = RAX * src, signed) forms.
+func (p *arm64) lowerIMUL(ops []operand.Op) {
+	switch len(ops) {
+	case 2:
+		s := p.valReg(ops[0])
+		d := operandReg(ops[1])
+		p.emit("MUL %s, %s, %s", s, d, d)
+	case 1:
+		p.lowerWideMul("SMULH", ops[0])
+	default:
+		panic(fmt.Sprintf("arm64: IMULQ with %d operands not supported", len(ops)))
+	}
+}
+
+// lowerWideMul lowers the single-operand MULQ/IMULQ: RDX:RAX = RAX * src, with
+// hiOp = UMULH (unsigned) or SMULH (signed). The source is staged when it aliases
+// RDX so writing the result cannot clobber it.
+func (p *arm64) lowerWideMul(hiOp string, src operand.Op) {
+	rax := rename(reg.RAX)
+	rdx := rename(reg.RDX)
+	s := p.srcRegInto(src, scratchVal)
+	if s == rdx {
+		p.emit("MOVD %s, %s", s, scratchVal)
+		s = scratchVal
+	}
+	p.emit("%s %s, %s, %s", hiOp, s, rax, rdx) // RDX = high(RAX*src)
+	p.emit("MUL %s, %s, %s", s, rax, rax)      // RAX = low(RAX*src)
+}
+
 func (p *arm64) lowerLEA(m operand.Mem, dst string) {
 	if m.Symbol.Name != "" {
 		panic("arm64: LEA of symbol not supported")
@@ -701,63 +899,67 @@ func isConditionalBranch(i *ir.Instruction) bool {
 	return i.Opcode != "JMP" && strings.HasPrefix(i.Opcode, "J")
 }
 
-// branchMnemonic maps an x86 conditional-jump opcode to the arm64 branch with
-// the same meaning. avo uses the Go-canonical names (JEQ/JCS/JHI/...); the Intel
-// aliases are accepted too. Mapping by meaning is correct despite x86 and arm64
-// using opposite carry-flag conventions for subtraction, because the condition
-// names encode the intent, not the raw flag.
-func branchMnemonic(op string) string {
-	switch op {
-	case "JEQ", "JE", "JZ":
-		return "BEQ"
-	case "JNE", "JNZ":
-		return "BNE"
-	case "JLT", "JL":
-		return "BLT" // signed <
-	case "JLE":
-		return "BLE" // signed <=
-	case "JGT", "JG":
-		return "BGT" // signed >
-	case "JGE":
-		return "BGE" // signed >=
-	case "JCS", "JB":
-		return "BLO" // unsigned <
-	case "JCC", "JAE", "JHS":
-		return "BHS" // unsigned >=
-	case "JHI", "JA":
-		return "BHI" // unsigned >
-	case "JLS", "JBE":
-		return "BLS" // unsigned <=
-	case "JMI", "JS":
-		return "BMI" // negative
-	case "JPL", "JNS":
-		return "BPL" // non-negative
-	case "JOS":
-		return "BVS" // overflow
-	case "JOC":
-		return "BVC" // no overflow
-	default:
-		panic(fmt.Sprintf("arm64: unsupported conditional branch %q", op))
+// armCond maps an x86/Go condition suffix to the arm64 condition mnemonic shared
+// by B.cond and CSEL. Mapping is by meaning: x86 and arm64 use opposite
+// carry-flag conventions for subtraction, but the named conditions encode the
+// intent, not the raw flag, so the same-named arm64 condition is correct.
+func armCond(cc string) (string, bool) {
+	switch cc {
+	case "EQ", "E", "Z":
+		return "EQ", true
+	case "NE", "NZ":
+		return "NE", true
+	case "LT", "L":
+		return "LT", true // signed <
+	case "LE":
+		return "LE", true // signed <=
+	case "GT", "G":
+		return "GT", true // signed >
+	case "GE":
+		return "GE", true // signed >=
+	case "CS", "B", "LO":
+		return "LO", true // unsigned <
+	case "CC", "AE", "HS":
+		return "HS", true // unsigned >=
+	case "HI", "A":
+		return "HI", true // unsigned >
+	case "LS", "BE":
+		return "LS", true // unsigned <=
+	case "MI", "S":
+		return "MI", true // negative
+	case "PL", "NS":
+		return "PL", true // non-negative
+	case "OS":
+		return "VS", true // overflow
+	case "OC":
+		return "VC", true // no overflow
 	}
+	return "", false
 }
 
-// cmovCond maps an x86 CMOVcc opcode to its arm64 CSEL condition. Only EQ/NE are
-// exercised by the zstd generators today; the rest are by-construction.
-func cmovCond(op string) string {
-	switch op {
-	case "CMOVQEQ", "CMOVLEQ":
-		return "EQ"
-	case "CMOVQNE", "CMOVLNE":
-		return "NE"
-	case "CMOVQHI", "CMOVLHI":
-		return "HI"
-	case "CMOVQCC", "CMOVQHS", "CMOVLCC", "CMOVLHS":
-		return "HS"
-	case "CMOVQCS", "CMOVQLO", "CMOVLCS", "CMOVLLO":
-		return "LO"
-	default:
-		panic(fmt.Sprintf("arm64: unsupported CMOV %q", op))
+// branchMnemonic maps an x86 conditional-jump opcode (Go-canonical name or Intel
+// alias) to the arm64 conditional branch with the same meaning.
+func branchMnemonic(op string) string {
+	if cc, ok := armCond(strings.TrimPrefix(op, "J")); ok {
+		return "B" + cc
 	}
+	panic(fmt.Sprintf("arm64: unsupported conditional branch %q", op))
+}
+
+// cmovCond maps an x86 CMOVcc opcode to its arm64 CSEL condition, for the Q/L/W
+// operand-size prefixes.
+func cmovCond(op string) string {
+	cc := op
+	for _, prefix := range []string{"CMOVQ", "CMOVL", "CMOVW"} {
+		if strings.HasPrefix(op, prefix) {
+			cc = op[len(prefix):]
+			break
+		}
+	}
+	if a, ok := armCond(cc); ok {
+		return a
+	}
+	panic(fmt.Sprintf("arm64: unsupported CMOV %q", op))
 }
 
 // flagProducers identifies, for every flag consumer (a conditional branch or a
@@ -814,6 +1016,13 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 // CMOVcc read flags but do not write them, so they too are transparent to an
 // earlier producer's flags.
 func isFlagTransparent(op string) bool {
+	switch op {
+	// BMI2 flag-free variants (shifts and wide multiply) deliberately leave flags
+	// untouched, unlike their non-BMI2 counterparts; their arm64 lowerings use
+	// non-flag-setting ops too, so NZCV survives a producer across them.
+	case "SHLXQ", "SHRXQ", "SARXQ", "RORXQ", "MULXQ":
+		return true
+	}
 	switch {
 	case strings.HasPrefix(op, "MOV"),
 		strings.HasPrefix(op, "LEA"),

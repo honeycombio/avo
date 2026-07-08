@@ -279,3 +279,192 @@ TestL32_zero:
 TestL32_end:
 	MOVQ AX, ret+16(FP)
 	RET
+
+// func IMul2(x uint64, y uint64) uint64
+TEXT ·IMul2(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  y+8(FP), CX
+	IMULQ AX, CX
+	MOVQ  CX, ret+16(FP)
+	RET
+
+// func IMul3(x uint64) uint64
+TEXT ·IMul3(SB), NOSPLIT, $0-16
+	MOVQ   x+0(FP), AX
+	IMUL3Q $0x9e3779b1, AX, AX
+	MOVQ   AX, ret+8(FP)
+	RET
+
+// func MulWide(x uint64, y uint64) (lo uint64, hi uint64)
+TEXT ·MulWide(SB), NOSPLIT, $0-32
+	MOVQ x+0(FP), AX
+	MOVQ y+8(FP), SI
+	MULQ SI
+	MOVQ AX, lo+16(FP)
+	MOVQ DX, hi+24(FP)
+	RET
+
+// func IMulWide(x int64, y int64) (lo uint64, hi uint64)
+TEXT ·IMulWide(SB), NOSPLIT, $0-32
+	MOVQ  x+0(FP), AX
+	MOVQ  y+8(FP), SI
+	IMULQ SI
+	MOVQ  AX, lo+16(FP)
+	MOVQ  DX, hi+24(FP)
+	RET
+
+// func MulX(x uint64, y uint64) (lo uint64, hi uint64)
+// Requires: BMI2
+TEXT ·MulX(SB), NOSPLIT, $0-32
+	MOVQ  x+0(FP), SI
+	MOVQ  y+8(FP), DX
+	MULXQ SI, AX, BX
+	MOVQ  AX, lo+16(FP)
+	MOVQ  BX, hi+24(FP)
+	RET
+
+// func ShlX(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·ShlX(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  n+8(FP), CX
+	SHLXQ CX, AX, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func ShrX(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·ShrX(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  n+8(FP), CX
+	SHRXQ CX, AX, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func SarX(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·SarX(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  n+8(FP), CX
+	SARXQ CX, AX, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func RorX(x uint64) uint64
+// Requires: BMI2
+TEXT ·RorX(SB), NOSPLIT, $0-16
+	MOVQ  x+0(FP), AX
+	RORXQ $0x38, AX, AX
+	MOVQ  AX, ret+8(FP)
+	RET
+
+// func Bzhi(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·Bzhi(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  n+8(FP), CX
+	BZHIQ CX, AX, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func Bextr88(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr88(SB), NOSPLIT, $0-16
+	MOVQ   x+0(FP), AX
+	MOVQ   $0x00000808, CX
+	BEXTRQ CX, AX, AX
+	MOVQ   AX, ret+8(FP)
+	RET
+
+// func Bextr4_12(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr4_12(SB), NOSPLIT, $0-16
+	MOVQ   x+0(FP), AX
+	MOVQ   $0x00000c04, CX
+	BEXTRQ CX, AX, AX
+	MOVQ   AX, ret+8(FP)
+	RET
+
+// func SelLtS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelLtS(SB), NOSPLIT, $0-40
+	MOVQ    a+0(FP), AX
+	MOVQ    b+8(FP), CX
+	MOVQ    c+16(FP), DX
+	MOVQ    d+24(FP), BX
+	CMPQ    AX, CX
+	CMOVQLT DX, BX
+	MOVQ    BX, ret+32(FP)
+	RET
+
+// func SelLeS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelLeS(SB), NOSPLIT, $0-40
+	MOVQ    a+0(FP), AX
+	MOVQ    b+8(FP), CX
+	MOVQ    c+16(FP), DX
+	MOVQ    d+24(FP), BX
+	CMPQ    AX, CX
+	CMOVQLE DX, BX
+	MOVQ    BX, ret+32(FP)
+	RET
+
+// func SelGtS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelGtS(SB), NOSPLIT, $0-40
+	MOVQ    a+0(FP), AX
+	MOVQ    b+8(FP), CX
+	MOVQ    c+16(FP), DX
+	MOVQ    d+24(FP), BX
+	CMPQ    AX, CX
+	CMOVQGT DX, BX
+	MOVQ    BX, ret+32(FP)
+	RET
+
+// func SelGeS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelGeS(SB), NOSPLIT, $0-40
+	MOVQ    a+0(FP), AX
+	MOVQ    b+8(FP), CX
+	MOVQ    c+16(FP), DX
+	MOVQ    d+24(FP), BX
+	CMPQ    AX, CX
+	CMOVQGE DX, BX
+	MOVQ    BX, ret+32(FP)
+	RET
+
+// func SelLsU(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelLsU(SB), NOSPLIT, $0-40
+	MOVQ    a+0(FP), AX
+	MOVQ    b+8(FP), CX
+	MOVQ    c+16(FP), DX
+	MOVQ    d+24(FP), BX
+	CMPQ    AX, CX
+	CMOVQLS DX, BX
+	MOVQ    BX, ret+32(FP)
+	RET
+
+// func SelMi(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelMi(SB), NOSPLIT, $0-40
+	MOVQ    a+0(FP), AX
+	MOVQ    b+8(FP), CX
+	MOVQ    c+16(FP), DX
+	MOVQ    d+24(FP), BX
+	CMPQ    AX, CX
+	CMOVQMI DX, BX
+	MOVQ    BX, ret+32(FP)
+	RET
+
+// func SelPl(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelPl(SB), NOSPLIT, $0-40
+	MOVQ    a+0(FP), AX
+	MOVQ    b+8(FP), CX
+	MOVQ    c+16(FP), DX
+	MOVQ    d+24(FP), BX
+	CMPQ    AX, CX
+	CMOVQPL DX, BX
+	MOVQ    BX, ret+32(FP)
+	RET

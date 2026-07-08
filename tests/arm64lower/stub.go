@@ -47,3 +47,41 @@ func CmpL32LessS(a uint64, b uint64) uint64
 func CmpL32LessU(a uint64, b uint64) uint64
 
 func TestL32(a uint64, m uint64) uint64
+
+func IMul2(x uint64, y uint64) uint64
+
+func IMul3(x uint64) uint64
+
+func MulWide(x uint64, y uint64) (lo uint64, hi uint64)
+
+func IMulWide(x int64, y int64) (lo uint64, hi uint64)
+
+func MulX(x uint64, y uint64) (lo uint64, hi uint64)
+
+func ShlX(x uint64, n uint64) uint64
+
+func ShrX(x uint64, n uint64) uint64
+
+func SarX(x uint64, n uint64) uint64
+
+func RorX(x uint64) uint64
+
+func Bzhi(x uint64, n uint64) uint64
+
+func Bextr88(x uint64) uint64
+
+func Bextr4_12(x uint64) uint64
+
+func SelLtS(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SelLeS(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SelGtS(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SelGeS(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SelLsU(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SelMi(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SelPl(a uint64, b uint64, c uint64, d uint64) uint64
