@@ -202,6 +202,7 @@ func (p *arm64) function(f *ir.Function, bmi2Twins map[string]bool) {
 	p.clear = true
 	nodes := f.Nodes
 	setflags := flagProducers(nodes)
+	subwordSafe := subwordSafeEqNe(nodes)
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
@@ -223,7 +224,7 @@ func (p *arm64) function(f *ir.Function, bmi2Twins map[string]bool) {
 			case isConditionalBranch(n):
 				p.emit("%s %s", branchMnemonic(n.Opcode), n.Operands[0].Asm())
 			default:
-				p.lower(n, setflags[idx])
+				p.lower(n, setflags[idx], subwordSafe[idx])
 			}
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
@@ -401,7 +402,7 @@ func (p *arm64) memAddr(m operand.Mem) string {
 	return cur
 }
 
-func (p *arm64) lower(i *ir.Instruction, flags bool) {
+func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	ops := i.Operands
 	switch i.Opcode {
 	case "RET":
@@ -518,21 +519,40 @@ func (p *arm64) lower(i *ir.Instruction, flags bool) {
 	// ---- comparisons: always emit an arm64 flag-setter ----
 	// The compare must run at the operand width: a 64-bit CMP of registers whose
 	// upper bits are not provably zero sets flags from the wrong bits. arm64 has
-	// a native 32-bit form (CMPW/TSTW); sub-32-bit widths would need the operands
-	// extended for the consuming condition's signedness, which is not modelled, so
-	// they fail loudly rather than silently comparing full 64-bit registers.
+	// a native 32-bit form (CMPW/TSTW); sub-32-bit widths would generally need the
+	// operands extended for the consuming condition's signedness, which is not
+	// modelled. The one exception is when every consumer is EQ/NE (checked by
+	// subwordEqNeSafe, from subwordSafeEqNe): equality doesn't depend on sign, so
+	// zero-extending both operands to the compared width before a full-width
+	// compare is correct unconditionally, with no need to prove the operands were
+	// already clean above that width. Anything else fails loudly rather than
+	// silently comparing full 64-bit registers.
 	case "CMPQ":
 		p.lowerCompare("CMP", "CMN", ops[0], ops[1])
 	case "CMPL":
 		p.lowerCompare("CMPW", "CMNW", ops[0], ops[1])
 	case "CMPW", "CMPB":
-		panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit compare needs width- and sign-correct operand extension)", i.Opcode))
+		if !subwordEqNeSafe {
+			panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit compare needs width- and sign-correct operand extension unless every consumer is EQ/NE)", i.Opcode))
+		}
+		bits := 16
+		if i.Opcode == "CMPB" {
+			bits = 8
+		}
+		p.lowerSubwordCompareEqNe(bits, "CMP", ops[0], ops[1])
 	case "TESTQ":
 		p.lowerTest("TST", ops[0], ops[1])
 	case "TESTL":
 		p.lowerTest("TSTW", ops[0], ops[1])
 	case "TESTW", "TESTB":
-		panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit test needs width-correct operands)", i.Opcode))
+		if !subwordEqNeSafe {
+			panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit test needs width-correct operands unless every consumer is EQ/NE)", i.Opcode))
+		}
+		bits := 16
+		if i.Opcode == "TESTB" {
+			bits = 8
+		}
+		p.lowerSubwordTestEqNe(bits, ops[0], ops[1])
 
 	default:
 		panic(fmt.Sprintf("arm64: unsupported opcode %q (operands: %s)", i.Opcode, joinOperands(ops)))
@@ -876,6 +896,53 @@ func (p *arm64) lowerTest(op string, a, b operand.Op) {
 	p.emit("%s %s, %s", op, p.regOrImm(b), aReg)
 }
 
+// lowerSubwordCompareEqNe lowers a sub-32-bit CMP (bits is 8 or 16) whose only
+// consumers are EQ/NE (see subwordSafeEqNe), by zero-extending both operands
+// to the compared width before a full-width compare. Correct unconditionally:
+// equality doesn't depend on sign, so no proof that the operands were already
+// clean above that width is needed, unlike the general sub-word compare case.
+func (p *arm64) lowerSubwordCompareEqNe(bits int, cmp string, a, b operand.Op) {
+	ra := p.zeroExtendEqNe(bits, a, scratchAddr)
+	rb := p.zeroExtendEqNe(bits, b, scratchVal)
+	// arm64 CMP Rm, Rn computes Rn - Rm; we only need Z, so the operand order
+	// does not matter here, but keep it consistent with lowerCompare (a - b).
+	p.emit("%s %s, %s", cmp, rb, ra)
+}
+
+// lowerSubwordTestEqNe lowers a sub-32-bit TEST (bits is 8 or 16) whose only
+// consumers are EQ/NE (i.e. only the Z flag is read), by zero-extending both
+// operands to the tested width before a full-width TST. Correct
+// unconditionally: with both operands clean above that width, the AND's upper
+// bits are always zero, so Z exactly reflects whether the low bits are all
+// zero, which is what EQ/NE tests.
+func (p *arm64) lowerSubwordTestEqNe(bits int, a, b operand.Op) {
+	ra := p.zeroExtendEqNe(bits, a, scratchAddr)
+	rb := p.zeroExtendEqNe(bits, b, scratchVal)
+	p.emit("TST %s, %s", rb, ra)
+}
+
+// zeroExtendEqNe materializes op, zero-extended to the given bit width (8 or
+// 16), into the given scratch register and returns its name.
+//
+// Memory operands are not supported: computing an indexed address reuses the
+// same two scratch registers this printer has available, and could clobber
+// the other operand's already-masked value held in one of them. Neither
+// subword-safe compare/test reaches this path with a memory operand today, so
+// this fails loud rather than risk silently corrupting a scratch register.
+func (p *arm64) zeroExtendEqNe(bits int, op operand.Op, scratch string) string {
+	mask := fmt.Sprintf("$0x%x", uint64(1)<<uint(bits)-1)
+	if imm, ok := immAsm(op); ok {
+		p.emit("MOVD %s, %s", imm, scratch)
+		p.emit("AND %s, %s, %s", mask, scratch, scratch)
+		return scratch
+	}
+	if _, ok := op.(operand.Mem); ok {
+		panic("arm64: sub-word EQ/NE compare of a memory operand not supported")
+	}
+	p.emit("AND %s, %s, %s", mask, operandReg(op), scratch)
+	return scratch
+}
+
 // lowerCMOV lowers "CMOVcc src, dst" to "CSEL cc, src, dst, dst".
 func (p *arm64) lowerCMOV(i *ir.Instruction) {
 	cond := cmovCond(i.Opcode)
@@ -1047,4 +1114,77 @@ func flagSetter(op string) (mark, ok bool) {
 	default:
 		return false, false
 	}
+}
+
+// isSubwordCompare reports whether opcode is a sub-32-bit CMP/TEST, the only
+// class this printer treats as conditionally supported (see subwordSafeEqNe).
+func isSubwordCompare(opcode string) bool {
+	switch opcode {
+	case "CMPW", "CMPB", "TESTW", "TESTB":
+		return true
+	}
+	return false
+}
+
+// consumerCondition returns the arm64 condition an instruction consumes flags
+// under, if it is a CMOVcc or a conditional branch.
+func consumerCondition(opcode string) (string, bool) {
+	if strings.HasPrefix(opcode, "CMOV") {
+		cc := opcode
+		for _, prefix := range []string{"CMOVQ", "CMOVL", "CMOVW"} {
+			if strings.HasPrefix(opcode, prefix) {
+				cc = opcode[len(prefix):]
+				break
+			}
+		}
+		return armCond(cc)
+	}
+	if opcode != "JMP" && strings.HasPrefix(opcode, "J") {
+		return armCond(strings.TrimPrefix(opcode, "J"))
+	}
+	return "", false
+}
+
+// subwordSafeEqNe identifies, for every straight-line CMPW/CMPB/TESTW/TESTB
+// producer, whether every consumer that reads its flags uses only EQ/NE.
+// Sub-word CMP/TEST are otherwise unsupported (see lower()) because ordering
+// conditions need sign-aware operand extension this printer does not model;
+// equality doesn't depend on sign, so this narrow case can be lowered safely
+// regardless of the surrounding dataflow (see lowerSubwordCompareEqNe).
+//
+// The scan mirrors flagProducers but runs forward: from each producer, walk
+// over flag-transparent instructions (CMOVcc/Jcc chain onto the same flags)
+// collecting every consumer found, until a non-flag-transparent instruction,
+// a label, or the end of the block. A producer with multiple consumers (e.g.
+// two chained conditional branches) requires ALL of them to be EQ/NE.
+func subwordSafeEqNe(nodes []ir.Node) map[int]bool {
+	safe := make(map[int]bool)
+	for j, n := range nodes {
+		ins, ok := n.(*ir.Instruction)
+		if !ok || !isSubwordCompare(ins.Opcode) {
+			continue
+		}
+		eqne, any := true, false
+	consumers:
+		for k := j + 1; k < len(nodes); k++ {
+			switch next := nodes[k].(type) {
+			case *ir.Comment:
+				continue
+			case *ir.Instruction:
+				if cond, isConsumer := consumerCondition(next.Opcode); isConsumer {
+					any = true
+					if cond != "EQ" && cond != "NE" {
+						eqne = false
+					}
+					continue // flag-transparent: keep scanning for chained consumers
+				}
+				any = true // another flag-affecting instruction: this producer's flags are dead
+				break consumers
+			default:
+				break consumers // label: producer/consumer link does not cross blocks
+			}
+		}
+		safe[j] = any && eqne
+	}
+	return safe
 }

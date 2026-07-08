@@ -285,6 +285,60 @@ TestL32_end:
 	MOVD R0, ret+16(FP)
 	RET
 
+// func CmpW16Eq(a uint64, b uint64) uint64
+TEXT ·CmpW16Eq(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	AND  $0xffff, R0, R15
+	AND  $0xffff, R1, R16
+	CMP  R16, R15
+	BEQ  CmpW16Eq_yes
+	MOVD $0x0000000000000000, R0
+	JMP  CmpW16Eq_end
+
+CmpW16Eq_yes:
+	MOVD $0x0000000000000001, R0
+
+CmpW16Eq_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func CmpB8Ne(a uint64, b uint64) uint64
+TEXT ·CmpB8Ne(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	AND  $0xff, R0, R15
+	AND  $0xff, R1, R16
+	CMP  R16, R15
+	BNE  CmpB8Ne_diff
+	MOVD $0x0000000000000000, R0
+	JMP  CmpB8Ne_end
+
+CmpB8Ne_diff:
+	MOVD $0x0000000000000001, R0
+
+CmpB8Ne_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func TestW16Eq(a uint64, m uint64) uint64
+TEXT ·TestW16Eq(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD m+8(FP), R1
+	AND  $0xffff, R0, R15
+	AND  $0xffff, R1, R16
+	TST  R16, R15
+	BEQ  TestW16Eq_zero
+	MOVD $0x0000000000000000, R0
+	JMP  TestW16Eq_end
+
+TestW16Eq_zero:
+	MOVD $0x0000000000000001, R0
+
+TestW16Eq_end:
+	MOVD R0, ret+16(FP)
+	RET
+
 // func IMul2(x uint64, y uint64) uint64
 TEXT ·IMul2(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
