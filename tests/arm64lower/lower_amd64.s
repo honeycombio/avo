@@ -280,6 +280,54 @@ TestL32_end:
 	MOVQ AX, ret+16(FP)
 	RET
 
+// func CmpW16Eq(a uint64, b uint64) uint64
+TEXT ·CmpW16Eq(SB), NOSPLIT, $0-24
+	MOVQ a+0(FP), AX
+	MOVQ b+8(FP), CX
+	CMPW AX, CX
+	JEQ  CmpW16Eq_yes
+	MOVQ $0x0000000000000000, AX
+	JMP  CmpW16Eq_end
+
+CmpW16Eq_yes:
+	MOVQ $0x0000000000000001, AX
+
+CmpW16Eq_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func CmpB8Ne(a uint64, b uint64) uint64
+TEXT ·CmpB8Ne(SB), NOSPLIT, $0-24
+	MOVQ a+0(FP), AX
+	MOVQ b+8(FP), CX
+	CMPB AL, CL
+	JNE  CmpB8Ne_diff
+	MOVQ $0x0000000000000000, AX
+	JMP  CmpB8Ne_end
+
+CmpB8Ne_diff:
+	MOVQ $0x0000000000000001, AX
+
+CmpB8Ne_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func TestW16Eq(a uint64, m uint64) uint64
+TEXT ·TestW16Eq(SB), NOSPLIT, $0-24
+	MOVQ  a+0(FP), AX
+	MOVQ  m+8(FP), CX
+	TESTW AX, CX
+	JEQ   TestW16Eq_zero
+	MOVQ  $0x0000000000000000, AX
+	JMP   TestW16Eq_end
+
+TestW16Eq_zero:
+	MOVQ $0x0000000000000001, AX
+
+TestW16Eq_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
 // func IMul2(x uint64, y uint64) uint64
 TEXT ·IMul2(SB), NOSPLIT, $0-24
 	MOVQ  x+0(FP), AX

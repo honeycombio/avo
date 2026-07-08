@@ -170,6 +170,46 @@ func TestCompareWidth(t *testing.T) {
 			}
 		}
 	})
+	// CmpW16Eq/CmpB8Ne/TestW16Eq cover the EQ/NE-only zero-extend fallback for
+	// sub-32-bit CMP/TEST (see lowerSubwordCompareEqNe in printer/arm64.go):
+	// klauspost/compress's zstd fseDecoder.buildDtable compares two uint16
+	// values this way. Every case's operands agree in the low bits under test
+	// but differ above it, so a naive 64-bit fold gets the wrong answer.
+	t.Run("CmpW16Eq", func(t *testing.T) {
+		pairs := []struct{ a, b uint64 }{
+			{0x1_0005, 0x2_0005},                         // low16 equal, high bits differ
+			{0x1_0005, 0x1_0006},                         // low16 differ
+			{0xFFFF_FFFF_0000FFFF, 0x0000_0000_0000FFFF}, // low16 equal (0xFFFF), high bits very different
+		}
+		for _, p := range pairs {
+			if got, want := CmpW16Eq(p.a, p.b), b2u(uint16(p.a) == uint16(p.b)); got != want {
+				t.Errorf("CmpW16Eq(%#x, %#x) = %d, want %d", p.a, p.b, got, want)
+			}
+		}
+	})
+	t.Run("CmpB8Ne", func(t *testing.T) {
+		pairs := []struct{ a, b uint64 }{
+			{0x1_05, 0x2_05}, // low8 equal, high bits differ
+			{0x1_05, 0x1_06}, // low8 differ
+			{0xFFFF_FFFF_FFFF_00FF, 0x0000_0000_0000_00FF}, // low8 equal (0xFF), high bits very different
+		}
+		for _, p := range pairs {
+			if got, want := CmpB8Ne(p.a, p.b), b2u(uint8(p.a) != uint8(p.b)); got != want {
+				t.Errorf("CmpB8Ne(%#x, %#x) = %d, want %d", p.a, p.b, got, want)
+			}
+		}
+	})
+	t.Run("TestW16Eq", func(t *testing.T) {
+		pairs := []struct{ a, m uint64 }{
+			{0x1_0000, 0x1_0000}, // low16 AND is 0, but 64-bit AND is not
+			{0x0_0006, 0x0_0002},
+		}
+		for _, p := range pairs {
+			if got, want := TestW16Eq(p.a, p.m), b2u(uint16(p.a)&uint16(p.m) == 0); got != want {
+				t.Errorf("TestW16Eq(%#x, %#x) = %d, want %d", p.a, p.m, got, want)
+			}
+		}
+	})
 }
 
 func imulWideRef(x, y int64) (lo, hi uint64) {

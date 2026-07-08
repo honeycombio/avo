@@ -48,6 +48,12 @@ func CmpL32LessU(a uint64, b uint64) uint64
 
 func TestL32(a uint64, m uint64) uint64
 
+func CmpW16Eq(a uint64, b uint64) uint64
+
+func CmpB8Ne(a uint64, b uint64) uint64
+
+func TestW16Eq(a uint64, m uint64) uint64
+
 func IMul2(x uint64, y uint64) uint64
 
 func IMul3(x uint64) uint64

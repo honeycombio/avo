@@ -258,6 +258,68 @@ func main() {
 		RET()
 	}
 
+	// CmpW16Eq: res = (low 16 bits of a == low 16 bits of b) via a 16-bit
+	// compare on operands whose upper 48 bits differ, exercising the EQ/NE-only
+	// zero-extend fallback for sub-32-bit compares: a naive 64-bit fold would
+	// see the differing upper bits and wrongly report inequality.
+	TEXT("CmpW16Eq", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a := GP64()
+		Load(Param("a"), a)
+		b := GP64()
+		Load(Param("b"), b)
+		res := GP64()
+		CMPW(a.As16(), b.As16())
+		JEQ(operand.LabelRef("CmpW16Eq_yes"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("CmpW16Eq_end"))
+		Label("CmpW16Eq_yes")
+		MOVQ(operand.U64(1), res)
+		Label("CmpW16Eq_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
+	// CmpB8Ne: same idea as CmpW16Eq but 8-bit (CMPB), consumed by JNE instead
+	// of JEQ.
+	TEXT("CmpB8Ne", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a := GP64()
+		Load(Param("a"), a)
+		b := GP64()
+		Load(Param("b"), b)
+		res := GP64()
+		CMPB(a.As8(), b.As8())
+		JNE(operand.LabelRef("CmpB8Ne_diff"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("CmpB8Ne_end"))
+		Label("CmpB8Ne_diff")
+		MOVQ(operand.U64(1), res)
+		Label("CmpB8Ne_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
+	// TestW16Eq: TESTW sets ZF from the low-16-bit AND; the 64-bit fold is wrong
+	// when the operands share set bits only above bit 15. res = (low16 AND == 0).
+	TEXT("TestW16Eq", NOSPLIT, "func(a, m uint64) uint64")
+	{
+		a := GP64()
+		Load(Param("a"), a)
+		m := GP64()
+		Load(Param("m"), m)
+		res := GP64()
+		TESTW(a.As16(), m.As16())
+		JEQ(operand.LabelRef("TestW16Eq_zero"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("TestW16Eq_end"))
+		Label("TestW16Eq_zero")
+		MOVQ(operand.U64(1), res)
+		Label("TestW16Eq_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
 	// ---- multiplication ----
 
 	// IMul2: two-operand IMULQ (dst *= src), low 64 bits.
