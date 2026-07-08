@@ -227,7 +227,18 @@ func newLazyPrinterValue(b printer.Builder, dflt io.WriteCloser) *printerValue {
 }
 
 func (p *printerValue) Build(cfg printer.Config) pass.Interface {
-	if p.outputValue.w == nil && p.outputValue.filename != "" {
+	// Materialize a deferred -out filename. A lazy printer leaves its writer as
+	// the default (goasm defaults to stdout) during Set so the path can double as
+	// an -arch base; an explicit -out must still win over that default, so the
+	// file is opened here rather than falling back to the (non-nil) default.
+	if p.lazy && p.filename != "" && p.filename != "-" {
+		w, err := createOutput(p.filename)
+		if err != nil {
+			panic(err)
+		}
+		p.outputValue.w = w
+		p.lazy = false // materialized; a second Build must not reopen it
+	} else if p.outputValue.w == nil && p.outputValue.filename != "" {
 		w, err := createOutput(p.outputValue.filename)
 		if err != nil {
 			panic(err)

@@ -89,6 +89,89 @@ func TestSelectEq(t *testing.T) {
 	}
 }
 
+// TestFlagGap covers a flag-setting instruction separated from the conditional
+// branch that consumes its result by a flag-transparent MOV. The lowering must
+// still emit the flag-setting variant of the producer; otherwise the branch
+// reads stale NZCV and the result is wrong for some inputs.
+func TestFlagGap(t *testing.T) {
+	b2u := func(b bool) uint64 {
+		if b {
+			return 1
+		}
+		return 0
+	}
+	t.Run("SubGapEq", func(t *testing.T) {
+		for _, p := range []struct{ x, y uint64 }{{5, 5}, {5, 6}, {0, 0}, {1, 0}} {
+			if got, want := SubGapEq(p.x, p.y), b2u(p.x == p.y); got != want {
+				t.Errorf("SubGapEq(%d, %d) = %d, want %d", p.x, p.y, got, want)
+			}
+		}
+	})
+	t.Run("DecGapZero", func(t *testing.T) {
+		for _, x := range []uint64{0, 1, 2, 100} {
+			if got, want := DecGapZero(x, 0), b2u(x-1 == 0); got != want {
+				t.Errorf("DecGapZero(%d) = %d, want %d", x, got, want)
+			}
+		}
+	})
+}
+
+// TestCompareWidth covers 32-bit CMPL/TESTL on operands whose upper 32 bits
+// differ. A correct lowering compares only the low 32 bits; folding to a 64-bit
+// compare is observably wrong here, for signed and unsigned conditions alike.
+func TestCompareWidth(t *testing.T) {
+	b2u := func(b bool) uint64 {
+		if b {
+			return 1
+		}
+		return 0
+	}
+	t.Run("CmpL32Eq", func(t *testing.T) {
+		pairs := []struct{ a, b uint64 }{
+			{0x1_00000005, 0x2_00000005}, // low32 equal, high32 differ
+			{0x1_00000005, 0x1_00000006}, // low32 differ
+		}
+		for _, p := range pairs {
+			if got, want := CmpL32Eq(p.a, p.b), b2u(uint32(p.a) == uint32(p.b)); got != want {
+				t.Errorf("CmpL32Eq(%#x, %#x) = %d, want %d", p.a, p.b, got, want)
+			}
+		}
+	})
+	t.Run("CmpL32LessS", func(t *testing.T) {
+		pairs := []struct{ a, b uint64 }{
+			{0xF_FFFFFFFF, 0xF_00000001}, // int32 -1 < 1, but uint64 a > b
+			{0x0_00000005, 0x0_00000003},
+		}
+		for _, p := range pairs {
+			if got, want := CmpL32LessS(p.a, p.b), b2u(int32(p.a) < int32(p.b)); got != want {
+				t.Errorf("CmpL32LessS(%#x, %#x) = %d, want %d", p.a, p.b, got, want)
+			}
+		}
+	})
+	t.Run("CmpL32LessU", func(t *testing.T) {
+		pairs := []struct{ a, b uint64 }{
+			{0x2_00000001, 0x1_00000002}, // uint32 1 < 2, but uint64 a > b
+			{0x0_00000005, 0x0_00000003},
+		}
+		for _, p := range pairs {
+			if got, want := CmpL32LessU(p.a, p.b), b2u(uint32(p.a) < uint32(p.b)); got != want {
+				t.Errorf("CmpL32LessU(%#x, %#x) = %d, want %d", p.a, p.b, got, want)
+			}
+		}
+	})
+	t.Run("TestL32", func(t *testing.T) {
+		pairs := []struct{ a, m uint64 }{
+			{0x1_00000000, 0x1_00000000}, // low32 AND is 0, but 64-bit AND is not
+			{0x0_00000006, 0x0_00000002},
+		}
+		for _, p := range pairs {
+			if got, want := TestL32(p.a, p.m), b2u(uint32(p.a)&uint32(p.m) == 0); got != want {
+				t.Errorf("TestL32(%#x, %#x) = %d, want %d", p.a, p.m, got, want)
+			}
+		}
+	})
+}
+
 func TestLoadIdx(t *testing.T) {
 	var p [8]uint64
 	for i := range p {

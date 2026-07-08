@@ -9,7 +9,7 @@
 TEXT ·Add(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
-	ADD R0, R1, R1
+	ADD  R0, R1, R1
 	MOVD R1, ret+16(FP)
 	RET
 
@@ -17,14 +17,14 @@ TEXT ·Add(SB), NOSPLIT, $0-24
 TEXT ·Sub(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
-	SUB R1, R0, R0
+	SUB  R1, R0, R0
 	MOVD R0, ret+16(FP)
 	RET
 
 // func Neg(x uint64) uint64
 TEXT ·Neg(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	NEG R0, R0
+	NEG  R0, R0
 	MOVD R0, ret+8(FP)
 	RET
 
@@ -33,9 +33,9 @@ TEXT ·AndOrXor(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
 	MOVD R0, R2
-	AND R1, R2, R2
-	ORR R1, R0, R0
-	EOR R0, R2, R2
+	AND  R1, R2, R2
+	ORR  R1, R0, R0
+	EOR  R0, R2, R2
 	MOVD R2, ret+16(FP)
 	RET
 
@@ -43,7 +43,7 @@ TEXT ·AndOrXor(SB), NOSPLIT, $0-24
 TEXT ·ShlCL(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD n+8(FP), R1
-	LSL R1, R0, R0
+	LSL  R1, R0, R0
 	MOVD R0, ret+16(FP)
 	RET
 
@@ -51,7 +51,7 @@ TEXT ·ShlCL(SB), NOSPLIT, $0-24
 TEXT ·ShrCL(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD n+8(FP), R1
-	LSR R1, R0, R0
+	LSR  R1, R0, R0
 	MOVD R0, ret+16(FP)
 	RET
 
@@ -59,32 +59,32 @@ TEXT ·ShrCL(SB), NOSPLIT, $0-24
 TEXT ·RolCL(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD n+8(FP), R1
-	NEG R1, R16
-	ROR R16, R0, R0
+	NEG  R1, R16
+	ROR  R16, R0, R0
 	MOVD R0, ret+16(FP)
 	RET
 
 // func ZeroExt32(x uint64) uint64
 TEXT ·ZeroExt32(SB), NOSPLIT, $0-16
-	MOVD x+0(FP), R0
+	MOVD  x+0(FP), R0
 	MOVWU R0, R1
-	ADD R0, R1, R1
-	MOVD R1, ret+8(FP)
+	ADD   R0, R1, R1
+	MOVD  R1, ret+8(FP)
 	RET
 
 // func HighByte(x uint64) uint64
 TEXT ·HighByte(SB), NOSPLIT, $0-16
-	MOVD x+0(FP), R0
-	UBFX $8, R0, $8, R0
+	MOVD  x+0(FP), R0
+	UBFX  $8, R0, $8, R0
 	MOVBU R0, R0
-	MOVD R0, ret+8(FP)
+	MOVD  R0, ret+8(FP)
 	RET
 
 // func LoadIdx(p *[8]uint64, i uint64) uint64
 TEXT ·LoadIdx(SB), NOSPLIT, $0-24
 	MOVD p+0(FP), R0
 	MOVD i+8(FP), R1
-	ADD R1<<3, R0, R15
+	ADD  R1<<3, R0, R15
 	MOVD (R15), R0
 	MOVD R0, ret+16(FP)
 	RET
@@ -102,12 +102,14 @@ TEXT ·Copy16(SB), NOSPLIT, $0-16
 TEXT ·LessS(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	CMP R1, R0
-	BLT LessS_yes
+	CMP  R1, R0
+	BLT  LessS_yes
 	MOVD $0x0000000000000000, R0
-	JMP LessS_end
+	JMP  LessS_end
+
 LessS_yes:
 	MOVD $0x0000000000000001, R0
+
 LessS_end:
 	MOVD R0, ret+16(FP)
 	RET
@@ -116,12 +118,14 @@ LessS_end:
 TEXT ·GreaterEqS(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	CMP R1, R0
-	BGE GreaterEqS_yes
+	CMP  R1, R0
+	BGE  GreaterEqS_yes
 	MOVD $0x0000000000000000, R0
-	JMP GreaterEqS_end
+	JMP  GreaterEqS_end
+
 GreaterEqS_yes:
 	MOVD $0x0000000000000001, R0
+
 GreaterEqS_end:
 	MOVD R0, ret+16(FP)
 	RET
@@ -130,12 +134,14 @@ GreaterEqS_end:
 TEXT ·LessU(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	CMP R1, R0
-	BLO LessU_yes
+	CMP  R1, R0
+	BLO  LessU_yes
 	MOVD $0x0000000000000000, R0
-	JMP LessU_end
+	JMP  LessU_end
+
 LessU_yes:
 	MOVD $0x0000000000000001, R0
+
 LessU_end:
 	MOVD R0, ret+16(FP)
 	RET
@@ -144,12 +150,14 @@ LessU_end:
 TEXT ·AboveU(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	CMP R1, R0
-	BHI AboveU_yes
+	CMP  R1, R0
+	BHI  AboveU_yes
 	MOVD $0x0000000000000000, R0
-	JMP AboveU_end
+	JMP  AboveU_end
+
 AboveU_yes:
 	MOVD $0x0000000000000001, R0
+
 AboveU_end:
 	MOVD R0, ret+16(FP)
 	RET
@@ -158,12 +166,14 @@ AboveU_end:
 TEXT ·Equal(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	CMP R1, R0
-	BEQ Equal_yes
+	CMP  R1, R0
+	BEQ  Equal_yes
 	MOVD $0x0000000000000000, R0
-	JMP Equal_end
+	JMP  Equal_end
+
 Equal_yes:
 	MOVD $0x0000000000000001, R0
+
 Equal_end:
 	MOVD R0, ret+16(FP)
 	RET
@@ -175,7 +185,102 @@ TEXT ·SelectEq(SB), NOSPLIT, $0-40
 	MOVD b+8(FP), R1
 	MOVD c+16(FP), R2
 	MOVD d+24(FP), R3
-	CMP R1, R0
+	CMP  R1, R0
 	CSEL EQ, R2, R3, R3
 	MOVD R3, ret+32(FP)
+	RET
+
+// func SubGapEq(x uint64, y uint64) uint64
+TEXT ·SubGapEq(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	SUBS R1, R0, R0
+	MOVD $0x0000000000000000, R0
+	BEQ  SubGapEq_yes
+	JMP  SubGapEq_end
+
+SubGapEq_yes:
+	MOVD $0x0000000000000001, R0
+
+SubGapEq_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func DecGapZero(x uint64, y uint64) uint64
+TEXT ·DecGapZero(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	SUBS $1, R0, R0
+	MOVD $0x0000000000000000, R0
+	BEQ  DecGapZero_yes
+	JMP  DecGapZero_end
+
+DecGapZero_yes:
+	MOVD $0x0000000000000001, R0
+
+DecGapZero_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func CmpL32Eq(a uint64, b uint64) uint64
+TEXT ·CmpL32Eq(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	CMPW R1, R0
+	BEQ  CmpL32Eq_yes
+	MOVD $0x0000000000000000, R0
+	JMP  CmpL32Eq_end
+
+CmpL32Eq_yes:
+	MOVD $0x0000000000000001, R0
+
+CmpL32Eq_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func CmpL32LessS(a uint64, b uint64) uint64
+TEXT ·CmpL32LessS(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	CMPW R1, R0
+	BLT  CmpL32LessS_yes
+	MOVD $0x0000000000000000, R0
+	JMP  CmpL32LessS_end
+
+CmpL32LessS_yes:
+	MOVD $0x0000000000000001, R0
+
+CmpL32LessS_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func CmpL32LessU(a uint64, b uint64) uint64
+TEXT ·CmpL32LessU(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	CMPW R1, R0
+	BLO  CmpL32LessU_yes
+	MOVD $0x0000000000000000, R0
+	JMP  CmpL32LessU_end
+
+CmpL32LessU_yes:
+	MOVD $0x0000000000000001, R0
+
+CmpL32LessU_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func TestL32(a uint64, m uint64) uint64
+TEXT ·TestL32(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD m+8(FP), R1
+	TSTW R1, R0
+	BEQ  TestL32_zero
+	MOVD $0x0000000000000000, R0
+	JMP  TestL32_end
+
+TestL32_zero:
+	MOVD $0x0000000000000001, R0
+
+TestL32_end:
+	MOVD R0, ret+16(FP)
 	RET

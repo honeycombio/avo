@@ -181,5 +181,82 @@ func main() {
 		RET()
 	}
 
+	// selBranch emits "res = (op sets ZF) ? 1 : 0" with a flag-transparent MOVQ
+	// wedged between the flag-setting op and the JEQ that consumes it. x86 leaves
+	// flags untouched across a MOV, so a lowering that only inspects the single
+	// instruction following the producer fails to emit a flag-setting variant and
+	// the branch then reads stale NZCV.
+	selBranch := func(name string, produce func(res reg.GPVirtual)) {
+		TEXT(name, NOSPLIT, "func(x, y uint64) uint64")
+		res := GP64()
+		produce(res)
+		MOVQ(operand.U64(0), res)            // flag-transparent gap instruction
+		JEQ(operand.LabelRef(name + "_yes")) // consumes ZF from the producer above
+		JMP(operand.LabelRef(name + "_end"))
+		Label(name + "_yes")
+		MOVQ(operand.U64(1), res)
+		Label(name + "_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
+	// SubGapEq: SUBQ producer separated from JEQ by a MOV. res = (x-y==0).
+	selBranch("SubGapEq", func(res reg.GPVirtual) {
+		x := Load(Param("x"), GP64())
+		y := Load(Param("y"), GP64())
+		SUBQ(y, x) // x -= y; ZF set iff x == y
+	})
+
+	// DecGapZero: DECQ producer separated from JEQ by a MOV. res = (x-1==0).
+	// Covers the lowerIncDec path (the loop-counter idiom) as well as lowerArith.
+	selBranch("DecGapZero", func(res reg.GPVirtual) {
+		x := Load(Param("x"), GP64())
+		DECQ(x) // x--; ZF set iff x == 1
+	})
+
+	// cmpLow32 emits "res = (cmp of low 32 bits) ? 1 : 0" via a 32-bit compare on
+	// operands whose upper 32 bits differ, so folding CMPL to a 64-bit CMP is
+	// observably wrong. jmp selects the (signed or unsigned) branch under test.
+	cmpLow32 := func(name string, jmp func(operand.Op)) {
+		TEXT(name, NOSPLIT, "func(a, b uint64) uint64")
+		a := GP64()
+		Load(Param("a"), a)
+		b := GP64()
+		Load(Param("b"), b)
+		res := GP64()
+		CMPL(a.As32(), b.As32())
+		jmp(operand.LabelRef(name + "_yes"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef(name + "_end"))
+		Label(name + "_yes")
+		MOVQ(operand.U64(1), res)
+		Label(name + "_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+	cmpLow32("CmpL32Eq", JEQ)    // low32(a) == low32(b)
+	cmpLow32("CmpL32LessS", JLT) // int32(a) < int32(b)
+	cmpLow32("CmpL32LessU", JCS) // uint32(a) < uint32(b)
+
+	// TestL32: TESTL sets ZF from the low-32-bit AND; the 64-bit fold is wrong
+	// when the operands share set bits only above bit 31. res = (low32 AND == 0).
+	TEXT("TestL32", NOSPLIT, "func(a, m uint64) uint64")
+	{
+		a := GP64()
+		Load(Param("a"), a)
+		m := GP64()
+		Load(Param("m"), m)
+		res := GP64()
+		TESTL(a.As32(), m.As32())
+		JEQ(operand.LabelRef("TestL32_zero"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("TestL32_end"))
+		Label("TestL32_zero")
+		MOVQ(operand.U64(1), res)
+		Label("TestL32_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
 	Generate()
 }

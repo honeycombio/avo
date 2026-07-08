@@ -184,3 +184,98 @@ TEXT ·SelectEq(SB), NOSPLIT, $0-40
 	CMOVQEQ DX, BX
 	MOVQ    BX, ret+32(FP)
 	RET
+
+// func SubGapEq(x uint64, y uint64) uint64
+TEXT ·SubGapEq(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ y+8(FP), CX
+	SUBQ CX, AX
+	MOVQ $0x0000000000000000, AX
+	JEQ  SubGapEq_yes
+	JMP  SubGapEq_end
+
+SubGapEq_yes:
+	MOVQ $0x0000000000000001, AX
+
+SubGapEq_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func DecGapZero(x uint64, y uint64) uint64
+TEXT ·DecGapZero(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	DECQ AX
+	MOVQ $0x0000000000000000, AX
+	JEQ  DecGapZero_yes
+	JMP  DecGapZero_end
+
+DecGapZero_yes:
+	MOVQ $0x0000000000000001, AX
+
+DecGapZero_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func CmpL32Eq(a uint64, b uint64) uint64
+TEXT ·CmpL32Eq(SB), NOSPLIT, $0-24
+	MOVQ a+0(FP), AX
+	MOVQ b+8(FP), CX
+	CMPL AX, CX
+	JEQ  CmpL32Eq_yes
+	MOVQ $0x0000000000000000, AX
+	JMP  CmpL32Eq_end
+
+CmpL32Eq_yes:
+	MOVQ $0x0000000000000001, AX
+
+CmpL32Eq_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func CmpL32LessS(a uint64, b uint64) uint64
+TEXT ·CmpL32LessS(SB), NOSPLIT, $0-24
+	MOVQ a+0(FP), AX
+	MOVQ b+8(FP), CX
+	CMPL AX, CX
+	JLT  CmpL32LessS_yes
+	MOVQ $0x0000000000000000, AX
+	JMP  CmpL32LessS_end
+
+CmpL32LessS_yes:
+	MOVQ $0x0000000000000001, AX
+
+CmpL32LessS_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func CmpL32LessU(a uint64, b uint64) uint64
+TEXT ·CmpL32LessU(SB), NOSPLIT, $0-24
+	MOVQ a+0(FP), AX
+	MOVQ b+8(FP), CX
+	CMPL AX, CX
+	JCS  CmpL32LessU_yes
+	MOVQ $0x0000000000000000, AX
+	JMP  CmpL32LessU_end
+
+CmpL32LessU_yes:
+	MOVQ $0x0000000000000001, AX
+
+CmpL32LessU_end:
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func TestL32(a uint64, m uint64) uint64
+TEXT ·TestL32(SB), NOSPLIT, $0-24
+	MOVQ  a+0(FP), AX
+	MOVQ  m+8(FP), CX
+	TESTL AX, CX
+	JEQ   TestL32_zero
+	MOVQ  $0x0000000000000000, AX
+	JMP   TestL32_end
+
+TestL32_zero:
+	MOVQ $0x0000000000000001, AX
+
+TestL32_end:
+	MOVQ AX, ret+16(FP)
+	RET

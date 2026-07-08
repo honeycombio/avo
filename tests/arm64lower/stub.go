@@ -35,3 +35,15 @@ func AboveU(a uint64, b uint64) uint64
 func Equal(a uint64, b uint64) uint64
 
 func SelectEq(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SubGapEq(x uint64, y uint64) uint64
+
+func DecGapZero(x uint64, y uint64) uint64
+
+func CmpL32Eq(a uint64, b uint64) uint64
+
+func CmpL32LessS(a uint64, b uint64) uint64
+
+func CmpL32LessU(a uint64, b uint64) uint64
+
+func TestL32(a uint64, m uint64) uint64
