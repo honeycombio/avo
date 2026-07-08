@@ -152,6 +152,7 @@ func (p *arm64) function(f *ir.Function) {
 
 	p.clear = true
 	nodes := f.Nodes
+	setflags := flagProducers(nodes)
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
@@ -173,7 +174,7 @@ func (p *arm64) function(f *ir.Function) {
 			case isConditionalBranch(n):
 				p.emit("%s %s", branchMnemonic(n.Opcode), n.Operands[0].Asm())
 			default:
-				p.lower(n, flagSink(nodes, idx))
+				p.lower(n, setflags[idx])
 			}
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
@@ -438,11 +439,23 @@ func (p *arm64) lower(i *ir.Instruction, flags bool) {
 		p.emit("SUB %s, %s, %s", scratchVal, dst, dst)
 
 	// ---- comparisons: always emit an arm64 flag-setter ----
-	case "CMPQ", "CMPL", "CMPW", "CMPB":
-		p.lowerCompare(ops[0], ops[1])
-	case "TESTQ", "TESTL", "TESTW", "TESTB":
-		a := p.valReg(ops[0])
-		p.emit("TST %s, %s", p.regOrImm(ops[1]), a)
+	// The compare must run at the operand width: a 64-bit CMP of registers whose
+	// upper bits are not provably zero sets flags from the wrong bits. arm64 has
+	// a native 32-bit form (CMPW/TSTW); sub-32-bit widths would need the operands
+	// extended for the consuming condition's signedness, which is not modelled, so
+	// they fail loudly rather than silently comparing full 64-bit registers.
+	case "CMPQ":
+		p.lowerCompare("CMP", "CMN", ops[0], ops[1])
+	case "CMPL":
+		p.lowerCompare("CMPW", "CMNW", ops[0], ops[1])
+	case "CMPW", "CMPB":
+		panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit compare needs width- and sign-correct operand extension)", i.Opcode))
+	case "TESTQ":
+		p.lowerTest("TST", ops[0], ops[1])
+	case "TESTL":
+		p.lowerTest("TSTW", ops[0], ops[1])
+	case "TESTW", "TESTB":
+		panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit test needs width-correct operands)", i.Opcode))
 
 	default:
 		panic(fmt.Sprintf("arm64: unsupported opcode %q (operands: %s)", i.Opcode, joinOperands(ops)))
@@ -635,25 +648,34 @@ func (p *arm64) lowerLEA(m operand.Mem, dst string) {
 	}
 }
 
-// lowerCompare emits an arm64 flag-setter for "CMP a, b" (flags from a - b).
-// At most one of a, b is a memory operand (loaded into scratchVal).
-func (p *arm64) lowerCompare(a, b operand.Op) {
+// lowerCompare emits an arm64 flag-setter for "CMP a, b" (flags from a - b),
+// using the given compare mnemonic (cmp) and its negated-immediate counterpart
+// (cmn), so callers select the operand width: CMP/CMN for 64-bit, CMPW/CMNW for
+// 32-bit. At most one of a, b is a memory operand (loaded into scratchVal).
+func (p *arm64) lowerCompare(cmp, cmn string, a, b operand.Op) {
 	if imm, ok := immAsm(b); ok {
 		aReg := p.valReg(a)
 		if neg, val := negImm(imm); neg {
-			p.emit("CMN $%d, %s", val, aReg)
+			p.emit("%s $%d, %s", cmn, val, aReg)
 			return
 		}
-		p.emit("CMP %s, %s", imm, aReg)
+		p.emit("%s %s, %s", cmp, imm, aReg)
 		return
 	}
 	// arm64 CMP Rm, Rn computes Rn - Rm; we want a - b, so Rn=a, Rm=b.
 	if _, ok := a.(operand.Mem); ok {
 		aReg := p.valReg(a)
-		p.emit("CMP %s, %s", operandReg(b), aReg)
+		p.emit("%s %s, %s", cmp, operandReg(b), aReg)
 		return
 	}
-	p.emit("CMP %s, %s", p.valReg(b), operandReg(a))
+	p.emit("%s %s, %s", cmp, p.valReg(b), operandReg(a))
+}
+
+// lowerTest emits an arm64 bitwise-test flag-setter for "TEST a, b" using the
+// given mnemonic (TST for 64-bit, TSTW for 32-bit).
+func (p *arm64) lowerTest(op string, a, b operand.Op) {
+	aReg := p.valReg(a)
+	p.emit("%s %s, %s", op, p.regOrImm(b), aReg)
 }
 
 // lowerCMOV lowers "CMOVcc src, dst" to "CSEL cc, src, dst, dst".
@@ -738,18 +760,82 @@ func cmovCond(op string) string {
 	}
 }
 
-// flagSink reports whether the instruction after index idx consumes NZCV
-// (a conditional branch or a CMOV), so the producer must set flags.
-func flagSink(nodes []ir.Node, idx int) bool {
-	for j := idx + 1; j < len(nodes); j++ {
-		switch n := nodes[j].(type) {
-		case *ir.Comment:
+// flagProducers identifies, for every flag consumer (a conditional branch or a
+// CMOVcc), the instruction that produces the NZCV it reads, and returns the set
+// of node indices whose lowering must therefore emit a flag-setting variant.
+//
+// avo's IR does not model EFLAGS, so the producer/consumer link is recovered
+// structurally: scanning back from a consumer, comments and flag-transparent
+// instructions (moves, address computations, and other branches/CMOVs — which
+// read flags but never write them) are skipped, and the first flag-affecting
+// instruction is the producer. CMP*/TEST* already emit an unconditional
+// flag-setter and need no mark; a producer whose lowering cannot carry flags
+// (e.g. ORQ/XORQ/shifts) is unsupported and panics rather than let a branch run
+// on stale flags. Reaching a label or the start of the block means the flags
+// cross a control-flow edge, which this printer does not model; such a consumer
+// is left unmarked (matching the previous behaviour).
+//
+// A single-instruction lookahead is insufficient because x86 permits
+// flag-transparent instructions (a MOV, an LEA) between a producer and the
+// branch that consumes it; those must be skipped, not treated as the producer.
+func flagProducers(nodes []ir.Node) map[int]bool {
+	setflags := make(map[int]bool)
+	for j, n := range nodes {
+		ins, ok := n.(*ir.Instruction)
+		if !ok || !(strings.HasPrefix(ins.Opcode, "CMOV") || isConditionalBranch(ins)) {
 			continue
-		case *ir.Instruction:
-			return strings.HasPrefix(n.Opcode, "CMOV") || isConditionalBranch(n)
-		default:
-			return false
+		}
+		for k := j - 1; k >= 0; k-- {
+			if _, isComment := nodes[k].(*ir.Comment); isComment {
+				continue
+			}
+			prev, isInstr := nodes[k].(*ir.Instruction)
+			if !isInstr {
+				break // label or other boundary: producer not in this straight-line run
+			}
+			if isFlagTransparent(prev.Opcode) {
+				continue
+			}
+			mark, ok := flagSetter(prev.Opcode)
+			if !ok {
+				panic(fmt.Sprintf("arm64: %s consumes flags from %s, which the lowering cannot emit as a flag-setter", ins.Opcode, prev.Opcode))
+			}
+			if mark {
+				setflags[k] = true
+			}
+			break
 		}
 	}
+	return setflags
+}
+
+// isFlagTransparent reports whether an opcode's lowering leaves NZCV unchanged.
+// Moves and address computations never touch flags; conditional branches and
+// CMOVcc read flags but do not write them, so they too are transparent to an
+// earlier producer's flags.
+func isFlagTransparent(op string) bool {
+	switch {
+	case strings.HasPrefix(op, "MOV"),
+		strings.HasPrefix(op, "LEA"),
+		strings.HasPrefix(op, "CMOV"),
+		strings.HasPrefix(op, "J"): // JMP and the Jcc family
+		return true
+	}
 	return false
+}
+
+// flagSetter classifies a flag-affecting opcode. mark is true when its lowering
+// must be switched to a flag-setting variant; false when it already emits a
+// setter unconditionally (CMP*/TEST*). ok is false for flag-affecting opcodes
+// this printer cannot lower as a flag-setter, so callers fail loudly instead of
+// silently branching on stale flags.
+func flagSetter(op string) (mark, ok bool) {
+	switch op {
+	case "ADDQ", "SUBQ", "ANDQ", "INCQ", "DECQ", "DECL":
+		return true, true
+	case "CMPQ", "CMPL", "CMPW", "CMPB", "TESTQ", "TESTL", "TESTW", "TESTB":
+		return false, true
+	default:
+		return false, false
+	}
 }
