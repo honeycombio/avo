@@ -172,6 +172,121 @@ func TestCompareWidth(t *testing.T) {
 	})
 }
 
+func imulWideRef(x, y int64) (lo, hi uint64) {
+	uhi, ulo := bits.Mul64(uint64(x), uint64(y))
+	h := uhi
+	if x < 0 {
+		h -= uint64(y)
+	}
+	if y < 0 {
+		h -= uint64(x)
+	}
+	return ulo, h
+}
+
+func bzhiRef(x, n uint64) uint64 {
+	if n >= 64 {
+		return x
+	}
+	return x & ((uint64(1) << n) - 1)
+}
+
+// TestMultiply covers IMULQ (2- and 1-operand), IMUL3Q, MULQ, and BMI2 MULXQ.
+func TestMultiply(t *testing.T) {
+	pairs := []struct{ x, y uint64 }{
+		{0, 0}, {1, 1}, {3, 5}, {0xdeadbeef, 0x1234},
+		{^uint64(0), 2}, {^uint64(0), ^uint64(0)},
+		{1 << 40, 1 << 40}, {0x9E3779B97F4A7C15, 0x100000001},
+	}
+	for _, p := range pairs {
+		if got, want := IMul2(p.x, p.y), p.x*p.y; got != want {
+			t.Errorf("IMul2(%#x, %#x) = %#x, want %#x", p.x, p.y, got, want)
+		}
+		// IMUL3Q sign-extends its imm32: 0x9E3779B1 has bit 31 set, so the x86
+		// multiplier is the sign-extended 0xFFFFFFFF9E3779B1.
+		if got, want := IMul3(p.x), p.x*0xFFFFFFFF9E3779B1; got != want {
+			t.Errorf("IMul3(%#x) = %#x, want %#x", p.x, got, want)
+		}
+		wantHi, wantLo := bits.Mul64(p.x, p.y)
+		if lo, hi := MulWide(p.x, p.y); lo != wantLo || hi != wantHi {
+			t.Errorf("MulWide(%#x, %#x) = (%#x, %#x), want (%#x, %#x)", p.x, p.y, lo, hi, wantLo, wantHi)
+		}
+		if lo, hi := MulX(p.x, p.y); lo != wantLo || hi != wantHi {
+			t.Errorf("MulX(%#x, %#x) = (%#x, %#x), want (%#x, %#x)", p.x, p.y, lo, hi, wantLo, wantHi)
+		}
+		sLo, sHi := imulWideRef(int64(p.x), int64(p.y))
+		if lo, hi := IMulWide(int64(p.x), int64(p.y)); lo != sLo || hi != sHi {
+			t.Errorf("IMulWide(%d, %d) = (%#x, %#x), want (%#x, %#x)", int64(p.x), int64(p.y), lo, hi, sLo, sHi)
+		}
+	}
+}
+
+// TestBMI2 covers the BMI2 flag-free shifts/rotate and bit-field ops.
+func TestBMI2(t *testing.T) {
+	xs := []uint64{0, 1, 0xdeadbeefcafef00d, ^uint64(0), 0x8000000000000000, 0x00ff00ff00ff00ff}
+	for _, x := range xs {
+		for _, n := range []uint64{0, 1, 7, 8, 31, 32, 63} {
+			if got, want := ShlX(x, n), x<<(n&63); got != want {
+				t.Errorf("ShlX(%#x, %d) = %#x, want %#x", x, n, got, want)
+			}
+			if got, want := ShrX(x, n), x>>(n&63); got != want {
+				t.Errorf("ShrX(%#x, %d) = %#x, want %#x", x, n, got, want)
+			}
+			if got, want := SarX(x, n), uint64(int64(x)>>(n&63)); got != want {
+				t.Errorf("SarX(%#x, %d) = %#x, want %#x", x, n, got, want)
+			}
+			if got, want := Bzhi(x, n), bzhiRef(x, n); got != want {
+				t.Errorf("Bzhi(%#x, %d) = %#x, want %#x", x, n, got, want)
+			}
+		}
+		if got, want := RorX(x), bits.RotateLeft64(x, -56); got != want {
+			t.Errorf("RorX(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := Bextr88(x), (x>>8)&0xff; got != want {
+			t.Errorf("Bextr88(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := Bextr4_12(x), (x>>4)&0xfff; got != want {
+			t.Errorf("Bextr4_12(%#x) = %#x, want %#x", x, got, want)
+		}
+	}
+}
+
+// TestCMOVConditions covers the CMOVcc conditions enabled by the completed table.
+func TestCMOVConditions(t *testing.T) {
+	const c, d = uint64(0x1111), uint64(0x2222)
+	sel := func(cond bool) uint64 {
+		if cond {
+			return c
+		}
+		return d
+	}
+	pairs := []struct{ a, b uint64 }{
+		{5, 5}, {5, 6}, {6, 5}, {0, ^uint64(0)}, {^uint64(0), 0}, {1 << 63, 1}, {1, 1 << 63},
+	}
+	cases := []struct {
+		name string
+		got  func(a, b, c, d uint64) uint64
+		want func(a, b uint64) bool
+	}{
+		{"SelLtS", SelLtS, func(a, b uint64) bool { return int64(a) < int64(b) }},
+		{"SelLeS", SelLeS, func(a, b uint64) bool { return int64(a) <= int64(b) }},
+		{"SelGtS", SelGtS, func(a, b uint64) bool { return int64(a) > int64(b) }},
+		{"SelGeS", SelGeS, func(a, b uint64) bool { return int64(a) >= int64(b) }},
+		{"SelLsU", SelLsU, func(a, b uint64) bool { return a <= b }},
+		{"SelMi", SelMi, func(a, b uint64) bool { return int64(a-b) < 0 }},
+		{"SelPl", SelPl, func(a, b uint64) bool { return int64(a-b) >= 0 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, p := range pairs {
+				if got, want := tc.got(p.a, p.b, c, d), sel(tc.want(p.a, p.b)); got != want {
+					t.Errorf("%s(%#x, %#x) = %#x, want %#x", tc.name, p.a, p.b, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadIdx(t *testing.T) {
 	var p [8]uint64
 	for i := range p {

@@ -284,3 +284,212 @@ TestL32_zero:
 TestL32_end:
 	MOVD R0, ret+16(FP)
 	RET
+
+// func IMul2(x uint64, y uint64) uint64
+TEXT ·IMul2(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MUL  R0, R1, R1
+	MOVD R1, ret+16(FP)
+	RET
+
+// func IMul3(x uint64) uint64
+TEXT ·IMul3(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $-1640531535, R16
+	MUL  R16, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func MulWide(x uint64, y uint64) (lo uint64, hi uint64)
+TEXT ·MulWide(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R5
+	UMULH R5, R0, R2
+	MUL   R5, R0, R0
+	MOVD  R0, lo+16(FP)
+	MOVD  R2, hi+24(FP)
+	RET
+
+// func IMulWide(x int64, y int64) (lo uint64, hi uint64)
+TEXT ·IMulWide(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R5
+	SMULH R5, R0, R2
+	MUL   R5, R0, R0
+	MOVD  R0, lo+16(FP)
+	MOVD  R2, hi+24(FP)
+	RET
+
+// func MulX(x uint64, y uint64) (lo uint64, hi uint64)
+// Requires: BMI2
+TEXT ·MulX(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R5
+	MOVD  y+8(FP), R2
+	MUL   R5, R2, R16
+	UMULH R5, R2, R3
+	MOVD  R16, R0
+	MOVD  R0, lo+16(FP)
+	MOVD  R3, hi+24(FP)
+	RET
+
+// func ShlX(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·ShlX(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R1
+	LSL  R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func ShrX(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·ShrX(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R1
+	LSR  R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func SarX(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·SarX(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R1
+	ASR  R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func RorX(x uint64) uint64
+// Requires: BMI2
+TEXT ·RorX(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	ROR  $56, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func Bzhi(x uint64, n uint64) uint64
+// Requires: BMI2
+TEXT ·Bzhi(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R1
+	MOVD $1, R16
+	LSL  R1, R16, R16
+	SUB  $1, R16, R16
+	AND  R16, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Bextr88(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr88(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000808, R1
+	UBFX $0, R1, $8, R16
+	UBFX $8, R1, $8, R15
+	LSR  R16, R0, R0
+	MOVD $1, R16
+	LSL  R15, R16, R16
+	SUB  $1, R16, R16
+	AND  R16, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func Bextr4_12(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr4_12(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000c04, R1
+	UBFX $0, R1, $8, R16
+	UBFX $8, R1, $8, R15
+	LSR  R16, R0, R0
+	MOVD $1, R16
+	LSL  R15, R16, R16
+	SUB  $1, R16, R16
+	AND  R16, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func SelLtS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelLtS(SB), NOSPLIT, $0-40
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD c+16(FP), R2
+	MOVD d+24(FP), R3
+	CMP  R1, R0
+	CSEL LT, R2, R3, R3
+	MOVD R3, ret+32(FP)
+	RET
+
+// func SelLeS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelLeS(SB), NOSPLIT, $0-40
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD c+16(FP), R2
+	MOVD d+24(FP), R3
+	CMP  R1, R0
+	CSEL LE, R2, R3, R3
+	MOVD R3, ret+32(FP)
+	RET
+
+// func SelGtS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelGtS(SB), NOSPLIT, $0-40
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD c+16(FP), R2
+	MOVD d+24(FP), R3
+	CMP  R1, R0
+	CSEL GT, R2, R3, R3
+	MOVD R3, ret+32(FP)
+	RET
+
+// func SelGeS(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelGeS(SB), NOSPLIT, $0-40
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD c+16(FP), R2
+	MOVD d+24(FP), R3
+	CMP  R1, R0
+	CSEL GE, R2, R3, R3
+	MOVD R3, ret+32(FP)
+	RET
+
+// func SelLsU(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelLsU(SB), NOSPLIT, $0-40
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD c+16(FP), R2
+	MOVD d+24(FP), R3
+	CMP  R1, R0
+	CSEL LS, R2, R3, R3
+	MOVD R3, ret+32(FP)
+	RET
+
+// func SelMi(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelMi(SB), NOSPLIT, $0-40
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD c+16(FP), R2
+	MOVD d+24(FP), R3
+	CMP  R1, R0
+	CSEL MI, R2, R3, R3
+	MOVD R3, ret+32(FP)
+	RET
+
+// func SelPl(a uint64, b uint64, c uint64, d uint64) uint64
+// Requires: CMOV
+TEXT ·SelPl(SB), NOSPLIT, $0-40
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD c+16(FP), R2
+	MOVD d+24(FP), R3
+	CMP  R1, R0
+	CSEL PL, R2, R3, R3
+	MOVD R3, ret+32(FP)
+	RET
