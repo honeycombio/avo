@@ -10,24 +10,68 @@ import (
 	"github.com/mmcloughlin/avo/reg"
 )
 
-// TestARM64PrefersBMI2Twin checks the arm64 lowering picks the BMI2 variant over
-// its generic twin (BMI2 idioms lower to faster native arm64), while a function
-// with only one variant is still lowered.
-func TestARM64PrefersBMI2Twin(t *testing.T) {
+// twinTestContext builds a file with a generic/BMI2 twin pair and a
+// single-variant function, shared by both twin-preference tests below.
+func twinTestContext() *build.Context {
 	ctx := build.NewContext()
 	for _, name := range []string{"twin_amd64", "twin_bmi2", "solo_amd64"} {
 		ctx.Function(name)
 		ctx.SignatureExpr("func()")
 		ctx.RET()
 	}
+	return ctx
+}
 
-	out := Print(t, ctx, printer.NewARM64Asm)
+// printARM64 prints ctx with the arm64 lowering printer under the given config.
+func printARM64(t *testing.T, ctx *build.Context, cfg printer.Config) string {
+	t.Helper()
+	f, errs := ctx.Result()
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	b, err := printer.NewARM64Asm(cfg).Print(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestARM64PrefersGenericTwinByDefault checks that with the default config the
+// arm64 lowering picks a function's generic twin over its BMI2 one: BMI2 x86
+// code is tuned for x86 and is not reliably faster once mechanically lowered
+// (e.g. BEXTR packs into one instruction what arm64 needs two UBFX to unpack),
+// so this is the safe default absent a measured reason to prefer BMI2. A
+// function with only one variant is lowered regardless.
+func TestARM64PrefersGenericTwinByDefault(t *testing.T) {
+	out := printARM64(t, twinTestContext(), printer.NewDefaultConfig())
+
+	if n := strings.Count(out, "TEXT ·twin_arm64(SB)"); n != 1 {
+		t.Errorf("expected exactly one twin_arm64 definition, got %d:\n%s", n, out)
+	}
+	if !strings.Contains(out, "skipped twin_bmi2") {
+		t.Errorf("expected BMI2 twin_bmi2 to be skipped by default:\n%s", out)
+	}
+	if strings.Contains(out, "TEXT ·twin_amd64(SB)") {
+		t.Errorf("generic variant should be renamed, not emitted as twin_amd64:\n%s", out)
+	}
+	if !strings.Contains(out, "TEXT ·solo_arm64(SB)") {
+		t.Errorf("expected single-variant solo_amd64 lowered to solo_arm64:\n%s", out)
+	}
+}
+
+// TestARM64PreferBMI2TwinOptIn checks the ARM64PreferBMI2 config opt-in flips
+// the choice to the BMI2 twin, for callers who have actually measured it to be
+// faster for their case.
+func TestARM64PreferBMI2TwinOptIn(t *testing.T) {
+	cfg := printer.NewDefaultConfig()
+	cfg.ARM64PreferBMI2 = true
+	out := printARM64(t, twinTestContext(), cfg)
 
 	if n := strings.Count(out, "TEXT ·twin_arm64(SB)"); n != 1 {
 		t.Errorf("expected exactly one twin_arm64 definition, got %d:\n%s", n, out)
 	}
 	if !strings.Contains(out, "skipped twin_amd64") {
-		t.Errorf("expected generic twin_amd64 to be skipped:\n%s", out)
+		t.Errorf("expected generic twin_amd64 to be skipped when BMI2 is preferred:\n%s", out)
 	}
 	if strings.Contains(out, "TEXT ·twin_bmi2(SB)") {
 		t.Errorf("BMI2 variant should be renamed, not emitted as twin_bmi2:\n%s", out)

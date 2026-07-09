@@ -59,6 +59,7 @@ type Flags struct {
 	cpuprof   *outputValue
 	pkg       string
 	arch      string
+	arm64BMI2 bool
 	goasm     *printerValue
 	arm64     *printerValue
 	stubs     *printerValue
@@ -89,6 +90,8 @@ func NewFlags(fs *flag.FlagSet) *Flags {
 
 	fs.StringVar(&f.arch, "arch", "", "comma-separated list of GOARCH values to emit; treats -out as a base path and writes <base>_GOARCH.s for each (amd64 via goasm, arm64 via the EXPERIMENTAL lowering printer)")
 
+	fs.BoolVar(&f.arm64BMI2, "arm64-prefer-bmi2", false, "EXPERIMENTAL arm64 lowering: prefer a function's BMI2 twin over its generic one when both exist (default prefers generic; BMI2 x86 code is tuned for x86 and is not reliably faster once lowered -- measure before enabling)")
+
 	f.goasm = newLazyPrinterValue(printer.NewGoAsm, os.Stdout)
 	fs.Var(f.goasm, "out", "assembly output (or, with -arch, the base path)")
 
@@ -109,6 +112,7 @@ func (f *Flags) Config() *Config {
 	if f.pkg != "" {
 		pc.Pkg = f.pkg
 	}
+	pc.ARM64PreferBMI2 = f.arm64BMI2
 
 	passes := []pass.Interface{pass.Compile}
 	if f.arch != "" {
