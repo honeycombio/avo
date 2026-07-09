@@ -82,11 +82,11 @@ const (
 
 func (p *arm64) Print(f *ir.File) ([]byte, error) {
 	p.header(f)
-	bmi2 := bmi2Twins(f)
+	twins := collectTwins(f)
 	for _, s := range f.Sections {
 		switch s := s.(type) {
 		case *ir.Function:
-			p.function(s, bmi2)
+			p.function(s, twins)
 		case *ir.Global:
 			p.global(s)
 		default:
@@ -125,14 +125,31 @@ func arm64Name(name string) string {
 	return logicalName(name) + "_arm64"
 }
 
-// bmi2Twins returns the set of logical names that have a BMI2 variant, so the
-// generic twin can be dropped in favour of the BMI2 one (faster on arm64).
-func bmi2Twins(f *ir.File) map[string]bool {
-	twins := make(map[string]bool)
+// twinPair records, for a logical function name, which of the generic/BMI2
+// variants are present.
+type twinPair struct {
+	generic, bmi2 bool
+}
+
+// collectTwins maps each logical function name to which variants exist, so
+// function() can tell a real generic/BMI2 pair (a choice to make, per
+// Config.ARM64PreferBMI2) apart from a function with only one variant (lower
+// it regardless -- there is no alternative).
+func collectTwins(f *ir.File) map[string]twinPair {
+	twins := make(map[string]twinPair)
 	for _, s := range f.Sections {
-		if fn, ok := s.(*ir.Function); ok && strings.Contains(fn.Name, "bmi2") {
-			twins[logicalName(fn.Name)] = true
+		fn, ok := s.(*ir.Function)
+		if !ok {
+			continue
 		}
+		name := logicalName(fn.Name)
+		t := twins[name]
+		if strings.Contains(fn.Name, "bmi2") {
+			t.bmi2 = true
+		} else {
+			t.generic = true
+		}
+		twins[name] = t
 	}
 	return twins
 }
@@ -171,17 +188,23 @@ func (p *arm64) global(g *ir.Global) {
 	p.Printf("GLOBL %s(SB), %s, $%d\n", g.Symbol, g.Attributes.Asm(), g.Size)
 }
 
-func (p *arm64) function(f *ir.Function, bmi2Twins map[string]bool) {
+func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	// On arm64 we emit one implementation per logical function. Where the
 	// generator produced both a generic ("_amd64") and a BMI2 ("_bmi2") variant,
-	// prefer the BMI2 one: arm64 has native, flag-free equivalents for the BMI2
-	// idioms (register shifts, wide multiply, bit-field extract) and they lower to
-	// faster code. The generic twin is skipped when a BMI2 twin exists; a function
-	// with a single variant is lowered as-is.
+	// Config.ARM64PreferBMI2 picks which one; the other is skipped. arm64 has
+	// native equivalents for the BMI2 idioms, but they are not reliably faster
+	// than lowering the generic path -- BMI2 x86 code is tuned for x86 (e.g.
+	// BEXTR packs into one instruction what arm64 needs two UBFX to unpack), so
+	// this is a measure-and-choose knob, not a default preference. A function
+	// with only one variant (no twin to choose between) is always lowered.
 	isBMI2 := strings.Contains(f.Name, "bmi2")
-	if !isBMI2 && bmi2Twins[logicalName(f.Name)] {
+	if t := twins[logicalName(f.Name)]; t.generic && t.bmi2 && isBMI2 != p.cfg.ARM64PreferBMI2 {
 		p.NL()
-		p.Comment("skipped " + f.Name + " (BMI2 twin preferred on arm64)")
+		label := "generic"
+		if p.cfg.ARM64PreferBMI2 {
+			label = "BMI2"
+		}
+		p.Comment(fmt.Sprintf("skipped %s (%s twin preferred on arm64)", f.Name, label))
 		return
 	}
 	name := arm64Name(f.Name)
