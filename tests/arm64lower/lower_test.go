@@ -10,7 +10,7 @@ import (
 	"testing/quick"
 )
 
-//go:generate go run asm.go -out lower_amd64.s -arm64 lower_arm64.s -stubs stub.go
+//go:generate go run asm.go -out lower_amd64.s -arm64 lower_arm64.s -stubs stub.go -arm64-promote-stack-slots
 
 func TestArith(t *testing.T) {
 	cases := []struct {
@@ -367,6 +367,31 @@ func TestMovbExact(t *testing.T) {
 			if got, want := MovbLowPreserve(a, b), b&^uint64(0xff)|(a>>8)&0xff; got != want {
 				t.Errorf("MovbLowPreserve(%#x, %#x) = %#x, want %#x", a, b, got, want)
 			}
+		}
+	}
+}
+
+// TestStackAccum covers stack-slot promotion (-arm64-promote-stack-slots): the
+// generated function carries its accumulator and loop bound in frame slots that
+// the arm64 lowering promotes to registers. The result must match the pure-Go
+// sum with uint64 wraparound regardless of how the slots are realized.
+func TestStackAccum(t *testing.T) {
+	ref := func(x, n uint64) uint64 {
+		var acc uint64
+		for i := uint64(0); i < n; i++ {
+			acc += x + i
+		}
+		return acc
+	}
+	cases := []struct{ x, n uint64 }{
+		{0, 0}, {5, 0}, {5, 1}, {1, 10}, {1000, 1000},
+		{^uint64(0), 3}, // wraps
+		{0x8000000000000000, 5},
+		{123456789, 4096},
+	}
+	for _, c := range cases {
+		if got, want := StackAccum(c.x, c.n), ref(c.x, c.n); got != want {
+			t.Errorf("StackAccum(%d, %d) = %d, want %d", c.x, c.n, got, want)
 		}
 	}
 }
