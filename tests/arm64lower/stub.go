@@ -78,6 +78,34 @@ func Bextr88(x uint64) uint64
 
 func Bextr4_12(x uint64) uint64
 
+func Bextr56_8(x uint64) uint64
+
+func Bextr8_56(x uint64) uint64
+
+func Bextr8_60(x uint64) uint64
+
+func Bextr0_0(x uint64) uint64
+
+func Bextr70_8(x uint64) uint64
+
+func BzhiConst13(x uint64) uint64
+
+func BzhiConst0(x uint64) uint64
+
+func BzhiConst64(x uint64) uint64
+
+func ShlXConst9(x uint64) uint64
+
+func ShrXConst9(x uint64) uint64
+
+func SetGe(a uint64, b uint64) uint64
+
+func AdcAccum(x uint64, acc uint64) uint64
+
+func BswapL(x uint64) uint64
+
+func AddByte(x uint64, y uint64) uint64
+
 func MovbHighDst(x uint64, y uint64) uint64
 
 func MovbLowPreserve(x uint64, y uint64) uint64

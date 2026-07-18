@@ -288,6 +288,68 @@ func TestBMI2(t *testing.T) {
 		if got, want := Bextr4_12(x), (x>>4)&0xfff; got != want {
 			t.Errorf("Bextr4_12(%#x) = %#x, want %#x", x, got, want)
 		}
+		if got, want := Bextr56_8(x), x>>56; got != want {
+			t.Errorf("Bextr56_8(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := Bextr8_56(x), x>>8; got != want {
+			t.Errorf("Bextr8_56(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := Bextr8_60(x), x>>8; got != want {
+			t.Errorf("Bextr8_60(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := Bextr0_0(x), uint64(0); got != want {
+			t.Errorf("Bextr0_0(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := Bextr70_8(x), uint64(0); got != want {
+			t.Errorf("Bextr70_8(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := BzhiConst13(x), x&0x1fff; got != want {
+			t.Errorf("BzhiConst13(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := BzhiConst0(x), uint64(0); got != want {
+			t.Errorf("BzhiConst0(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := BzhiConst64(x), x; got != want {
+			t.Errorf("BzhiConst64(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := ShlXConst9(x), x<<9; got != want {
+			t.Errorf("ShlXConst9(%#x) = %#x, want %#x", x, got, want)
+		}
+		if got, want := ShrXConst9(x), x>>9; got != want {
+			t.Errorf("ShrXConst9(%#x) = %#x, want %#x", x, got, want)
+		}
+	}
+}
+
+// TestHuff0Idioms covers SETcc, the ADC carry-accumulate, BSWAPL, and the
+// constrained ADDB shape used by the huff0 decoder's generated code.
+func TestHuff0Idioms(t *testing.T) {
+	xs := []uint64{0, 1, 3, 4, 5, 0xdeadbeefcafef00d, ^uint64(0), 0x8000000000000000, 127}
+	for _, a := range xs {
+		for _, b := range xs {
+			want := uint64(0)
+			if int64(a) >= int64(b) {
+				want = 1
+			}
+			if got := SetGe(a, b); got != want {
+				t.Errorf("SetGe(%#x, %#x) = %d, want %d", a, b, got, want)
+			}
+			cf := uint64(0)
+			if a < 4 {
+				cf = 1
+			}
+			want = b&^0xff | (b+cf)&0xff
+			if got := AdcAccum(a, b); got != want {
+				t.Errorf("AdcAccum(%#x, %#x) = %#x, want %#x", a, b, got, want)
+			}
+			if got, want := AddByte(a, b), b&^0xff|(a+b)&0xff; got != want {
+				t.Errorf("AddByte(%#x, %#x) = %#x, want %#x", a, b, got, want)
+			}
+		}
+		rev := uint64(bits.ReverseBytes32(uint32(a)))
+		if got := BswapL(a); got != rev {
+			t.Errorf("BswapL(%#x) = %#x, want %#x", a, got, rev)
+		}
 	}
 }
 

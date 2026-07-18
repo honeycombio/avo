@@ -57,6 +57,18 @@ type arm64 struct {
 	// asmfmt). clear tracks whether a blank line is already present.
 	pending [][2]string
 	clear   bool
+
+	// One-instruction constant-tracking window: constReg holds constVal when
+	// constOK and the immediately preceding instruction was "MOVQ/MOVL $imm,
+	// constReg". Any other instruction or a label invalidates it (comments are
+	// transparent). Used to fold BMI2 register-control ops (BEXTR/BZHI/SHLX/
+	// SHRX) whose control register is loaded with a constant right before use
+	// -- the x86 encodings have no immediate forms for these, but the arm64
+	// equivalents do (UBFX/AND/LSL/LSR), collapsing multi-instruction mask
+	// builds into one instruction.
+	constReg string
+	constVal int64
+	constOK  bool
 }
 
 // NewARM64Asm constructs a printer for writing Go arm64 assembly files by
@@ -226,9 +238,11 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	nodes := f.Nodes
 	setflags := flagProducers(nodes)
 	subwordSafe := subwordSafeEqNe(nodes)
+	p.constOK = false
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
+			p.constOK = false
 			p.flush()
 			p.ensureclear()
 			p.Printf("%s:\n", n)
@@ -244,11 +258,14 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 				p.emit("JMP %s", n.Operands[0].Asm())
 			case strings.HasPrefix(n.Opcode, "CMOV"):
 				p.lowerCMOV(n)
+			case strings.HasPrefix(n.Opcode, "SET"):
+				p.lowerSET(n)
 			case isConditionalBranch(n):
 				p.emit("%s %s", branchMnemonic(n.Opcode), n.Operands[0].Asm())
 			default:
 				p.lower(n, setflags[idx], subwordSafe[idx])
 			}
+			p.trackConst(n)
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
 			}
@@ -354,6 +371,51 @@ func immAsm(op operand.Op) (string, bool) {
 		return c.Asm(), true
 	}
 	return "", false
+}
+
+// trackConst maintains the one-instruction constant window: after a plain
+// "MOVQ/MOVL $imm, reg" the register's value is known while lowering the next
+// instruction. Every other instruction closes the window (labels do too, in
+// the dispatch loop). MOVL immediates are <=32-bit and x86 zero-extends the
+// destination, so the tracked 64-bit value is the same for both widths.
+func (p *arm64) trackConst(n *ir.Instruction) {
+	p.constOK = false
+	if n.Opcode != "MOVQ" && n.Opcode != "MOVL" || len(n.Operands) != 2 {
+		return
+	}
+	v, ok := immVal(n.Operands[0])
+	if !ok {
+		return
+	}
+	r, ok := n.Operands[1].(reg.Register)
+	if !ok {
+		return
+	}
+	p.constReg = rename(r)
+	p.constVal = v
+	p.constOK = true
+}
+
+// knownConst reports the constant held by register operand op, if the
+// immediately preceding instruction loaded it with an immediate.
+func (p *arm64) knownConst(op operand.Op) (int64, bool) {
+	r, ok := op.(reg.Register)
+	if !ok || !p.constOK || rename(r) != p.constReg {
+		return 0, false
+	}
+	return p.constVal, true
+}
+
+func immVal(op operand.Op) (int64, bool) {
+	c, ok := immAsm(op)
+	if !ok {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(strings.TrimPrefix(c, "$"), 0, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 func log2scale(s uint8) int {
@@ -466,6 +528,51 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 			}
 		}
 		p.lowerArith("EOR", "", ops[0], ops[1], flags)
+	case "XORL":
+		if ra, ok := ops[0].(reg.Register); ok {
+			if rb, ok := ops[1].(reg.Register); ok && rename(ra) == rename(rb) {
+				p.emit("MOVD $0, %s", rename(rb))
+				return
+			}
+		}
+		p.lowerArith("EORW", "", ops[0], ops[1], flags)
+	case "ADDB":
+		// x86 ADDB replaces only the destination's addressed byte with the byte
+		// sum (wrapping mod 256). Compute the sum in scratch — addition carries
+		// travel upward only, so garbage above bit 7 of either input cannot
+		// affect bits 7:0 — and insert exactly those 8 bits.
+		if isHighByte(ops[1]) {
+			v := p.byteVal(ops[0])
+			d := operandReg(ops[1])
+			p.emit("UBFX $8, %s, $8, %s", d, scratchAddr)
+			p.emit("ADD %s, %s, %s", v, scratchAddr, scratchAddr)
+			p.emit("BFI $8, %s, $8, %s", scratchAddr, d)
+			return
+		}
+		v := p.byteVal(ops[0])
+		d := operandReg(ops[1])
+		p.emit("ADD %s, %s, %s", v, d, scratchAddr)
+		p.emit("BFI $0, %s, $8, %s", scratchAddr, d)
+	case "ADCB":
+		// Narrow lowering of the carry-accumulate idiom "CMPQ x, y; ADCB $0, dst":
+		// dst's low byte += x86 CF, where CF after a compare is the unsigned
+		// borrow (x < y). arm64 inverts carry for subtraction, so borrow is the
+		// LO condition and no-borrow is HS: CSINC yields dst on HS and dst+1
+		// otherwise; only bits 7:0 of the result are inserted, as on x86.
+		// Assumes NZCV comes from a compare (flagProducers verifies the producer).
+		if v, ok := immVal(ops[0]); !ok || v != 0 {
+			panic("arm64: ADCB only supported with a $0 immediate source")
+		}
+		if isHighByte(ops[1]) {
+			panic("arm64: ADCB high-byte destination not supported")
+		}
+		d := operandReg(ops[1])
+		p.emit("CSINC HS, %s, %s, %s", d, d, scratchVal)
+		p.emit("BFI $0, %s, $8, %s", scratchVal, d)
+	case "BSWAPL":
+		// Byte-reverse the low 32 bits; the 32-bit result zero-extends, as on x86.
+		r := operandReg(ops[0])
+		p.emit("REVW %s, %s", r, r)
 	case "INCQ":
 		p.lowerIncDec("ADD", "ADDS", ops[0], flags)
 	case "DECQ":
@@ -811,8 +918,13 @@ func (p *arm64) srcRegInto(op operand.Op, scratch string) string {
 
 // lowerShiftX lowers a BMI2 flag-free shift "SHIFTX count, src, dst":
 // dst = src <shift> count. The count register is masked mod 64, as on x86.
+// A count register just loaded with a constant folds to an immediate shift.
 func (p *arm64) lowerShiftX(op string, count, src, dst operand.Op) {
 	s := p.srcRegInto(src, scratchVal)
+	if n, ok := p.knownConst(count); ok {
+		p.emit("%s $%d, %s, %s", op, n&63, s, operandReg(dst))
+		return
+	}
 	p.emit("%s %s, %s, %s", op, operandReg(count), s, operandReg(dst))
 }
 
@@ -832,11 +944,27 @@ func (p *arm64) lowerRORX(imm, src, dst operand.Op) {
 
 // lowerBZHI lowers "BZHIQ count, src, dst": dst = src & ((1<<count)-1). count is
 // a register bit-count; zstd only uses counts < 64, for which the mask is exact
-// (arm64 shifts mask the amount mod 64, so count == 64 is not handled).
+// (arm64 shifts mask the amount mod 64, so count == 64 is not handled). When the
+// count register was just loaded with a constant, the mask is folded to an
+// immediate AND (with x86's full n==0 / n>=64 semantics, which are exact).
 func (p *arm64) lowerBZHI(count, src, dst operand.Op) {
+	d := operandReg(dst)
+	if n, ok := p.knownConst(count); ok {
+		s := p.srcRegInto(src, d)
+		switch {
+		case n <= 0:
+			p.emit("MOVD $0, %s", d)
+		case n >= 64:
+			if s != d {
+				p.emit("MOVD %s, %s", s, d)
+			}
+		default:
+			p.emit("AND $%d, %s, %s", (int64(1)<<uint(n))-1, s, d)
+		}
+		return
+	}
 	s := p.srcRegInto(src, scratchAddr)
 	n := operandReg(count)
-	d := operandReg(dst)
 	p.emit("MOVD $1, %s", scratchVal)
 	p.emit("LSL %s, %s, %s", n, scratchVal, scratchVal) // 1 << count
 	p.emit("SUB $1, %s, %s", scratchVal, scratchVal)    // mask = (1<<count)-1
@@ -846,10 +974,26 @@ func (p *arm64) lowerBZHI(count, src, dst operand.Op) {
 // lowerBEXTR lowers "BEXTRQ ctrl, src, dst": with ctrl[7:0]=start and
 // ctrl[15:8]=len, dst = (src >> start) & ((1<<len)-1). start and len come from the
 // ctrl register at run time; zstd's control values keep both < 64. start and len
-// are extracted before any destination write so ctrl may alias dst.
+// are extracted before any destination write so ctrl may alias dst. When the
+// ctrl register was just loaded with a constant, the extract folds to a single
+// UBFX (or LSR when the field reaches bit 63, or a zero move when empty).
 func (p *arm64) lowerBEXTR(ctrl, src, dst operand.Op) {
-	c := operandReg(ctrl)
 	d := operandReg(dst)
+	if c, ok := p.knownConst(ctrl); ok {
+		start := c & 0xff
+		length := (c >> 8) & 0xff
+		s := p.srcRegInto(src, d)
+		switch {
+		case length == 0 || start >= 64:
+			p.emit("MOVD $0, %s", d)
+		case start+length >= 64:
+			p.emit("LSR $%d, %s, %s", start, s, d)
+		default:
+			p.emit("UBFX $%d, %s, $%d, %s", start, s, length, d)
+		}
+		return
+	}
+	c := operandReg(ctrl)
 	p.emit("UBFX $0, %s, $8, %s", c, scratchVal)  // start = ctrl[7:0]
 	p.emit("UBFX $8, %s, $8, %s", c, scratchAddr) // len   = ctrl[15:8]
 	s := p.srcRegInto(src, d)
@@ -1023,6 +1167,20 @@ func (p *arm64) zeroExtendEqNe(bits int, op operand.Op, scratch string) string {
 	return scratch
 }
 
+// lowerSET lowers "SETcc dst". x86 SETcc writes only the low byte of dst, so
+// the 0/1 is materialized with CSET in scratch and inserted into bits 7:0.
+func (p *arm64) lowerSET(i *ir.Instruction) {
+	cc, ok := armCond(strings.TrimPrefix(i.Opcode, "SET"))
+	if !ok {
+		panic(fmt.Sprintf("arm64: unsupported SETcc %q", i.Opcode))
+	}
+	if isHighByte(i.Operands[0]) {
+		panic("arm64: SETcc high-byte destination not supported")
+	}
+	p.emit("CSET %s, %s", cc, scratchVal)
+	p.emit("BFI $0, %s, $8, %s", scratchVal, operandReg(i.Operands[0]))
+}
+
 // lowerCMOV lowers "CMOVcc src, dst" to "CSEL cc, src, dst, dst".
 func (p *arm64) lowerCMOV(i *ir.Instruction) {
 	cond := cmovCond(i.Opcode)
@@ -1131,7 +1289,8 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 	setflags := make(map[int]bool)
 	for j, n := range nodes {
 		ins, ok := n.(*ir.Instruction)
-		if !ok || !(strings.HasPrefix(ins.Opcode, "CMOV") || isConditionalBranch(ins)) {
+		if !ok || !(strings.HasPrefix(ins.Opcode, "CMOV") || strings.HasPrefix(ins.Opcode, "SET") ||
+			strings.HasPrefix(ins.Opcode, "ADC") || isConditionalBranch(ins)) {
 			continue
 		}
 		for k := j - 1; k >= 0; k-- {
@@ -1174,7 +1333,8 @@ func isFlagTransparent(op string) bool {
 	case strings.HasPrefix(op, "MOV"),
 		strings.HasPrefix(op, "LEA"),
 		strings.HasPrefix(op, "CMOV"),
-		strings.HasPrefix(op, "J"): // JMP and the Jcc family
+		strings.HasPrefix(op, "SET"), // reads flags, never writes them
+		strings.HasPrefix(op, "J"):   // JMP and the Jcc family
 		return true
 	}
 	return false
@@ -1207,7 +1367,7 @@ func isSubwordCompare(opcode string) bool {
 }
 
 // consumerCondition returns the arm64 condition an instruction consumes flags
-// under, if it is a CMOVcc or a conditional branch.
+// under, if it is a CMOVcc, SETcc, ADC (carry), or a conditional branch.
 func consumerCondition(opcode string) (string, bool) {
 	if strings.HasPrefix(opcode, "CMOV") {
 		cc := opcode
@@ -1218,6 +1378,12 @@ func consumerCondition(opcode string) (string, bool) {
 			}
 		}
 		return armCond(cc)
+	}
+	if strings.HasPrefix(opcode, "SET") {
+		return armCond(strings.TrimPrefix(opcode, "SET"))
+	}
+	if strings.HasPrefix(opcode, "ADC") {
+		return "LO", true // consumes the carry (x86 borrow after a compare)
 	}
 	if opcode != "JMP" && strings.HasPrefix(opcode, "J") {
 		return armCond(strings.TrimPrefix(opcode, "J"))
