@@ -427,6 +427,32 @@ func main() {
 	bextr("Bextr88", 8, 8)    // zstd's exact usage
 	bextr("Bextr4_12", 4, 12) // asymmetric start/len
 
+	// MovbHighDst: MOVB into AH: replaces bits 15:8 of y with x's low byte,
+	// preserving everything else (the huff0 byte-packing idiom).
+	TEXT("MovbHighDst", NOSPLIT, "func(x, y uint64) uint64")
+	{
+		x := GP64()
+		Load(Param("x"), x)
+		y := reg.RAX // fixed: high-byte access requires AX-DX
+		Load(Param("y"), y)
+		MOVB(x.As8(), y.As8H())
+		Store(y, ReturnIndex(0))
+		RET()
+	}
+
+	// MovbLowPreserve: MOVB from AH to a low byte: replaces bits 7:0 of y with
+	// bits 15:8 of x, preserving y's upper bits.
+	TEXT("MovbLowPreserve", NOSPLIT, "func(x, y uint64) uint64")
+	{
+		x := reg.RCX // fixed: high-byte access requires AX-DX
+		Load(Param("x"), x)
+		y := GP64()
+		Load(Param("y"), y)
+		MOVB(x.As8H(), y.As8())
+		Store(y, ReturnIndex(0))
+		RET()
+	}
+
 	// ---- CMOVcc conditions newly enabled by the completed table ----
 	selectCC := func(name string, cmov func(src, dst operand.Op)) {
 		TEXT(name, NOSPLIT, "func(a, b, c, d uint64) uint64")

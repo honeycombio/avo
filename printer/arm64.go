@@ -437,18 +437,9 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	case "MOVL":
 		p.lowerMOVL(ops[0], ops[1])
 	case "MOVW":
-		p.lowerMove("MOVH", ops[0], ops[1])
+		p.lowerMOVW(ops[0], ops[1])
 	case "MOVB":
-		if isHighByte(ops[0]) {
-			// MOVB AH, dst : read bits 8-15 of the source register. arm64 has no
-			// high-byte register, so extract the byte explicitly (zero-extended).
-			if _, ok := ops[1].(operand.Mem); ok {
-				panic("arm64: MOVB high-byte to memory not supported")
-			}
-			p.emit("UBFX $8, %s, $8, %s", rename(ops[0].(reg.Register)), operandReg(ops[1]))
-			return
-		}
-		p.lowerMove("MOVB", ops[0], ops[1])
+		p.lowerMOVB(ops[0], ops[1])
 	case "MOVWQSX": // load/extend int16, sign-extend (mem or reg source)
 		p.emit("MOVH %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVWQZX": // load/extend uint16, zero-extend
@@ -630,6 +621,72 @@ func (p *arm64) lowerMove(op string, src, dst operand.Op) {
 		}
 		p.emit("%s %s, %s", op, operandReg(src), operandReg(dst))
 	}
+}
+
+// byteVal materializes the byte value of a MOVB/ADDB-style source operand in a
+// register whose bits 7:0 hold the value (higher bits may be garbage unless the
+// operand was a high-byte register, an immediate, or memory, which are cleanly
+// extracted/loaded into scratch). Callers must consume only bits 7:0.
+func (p *arm64) byteVal(op operand.Op) string {
+	if isHighByte(op) {
+		p.emit("UBFX $8, %s, $8, %s", rename(op.(reg.Register)), scratchVal)
+		return scratchVal
+	}
+	if imm, ok := immAsm(op); ok {
+		p.emit("MOVD %s, %s", imm, scratchVal)
+		return scratchVal
+	}
+	if m, ok := op.(operand.Mem); ok {
+		p.emit("MOVBU %s, %s", p.memAsm(m), scratchVal)
+		return scratchVal
+	}
+	return operandReg(op)
+}
+
+// lowerMOVB lowers x86 MOVB with exact partial-register semantics: a byte store
+// writes one byte of memory; a register destination has only its addressed byte
+// (bits 7:0, or 15:8 for AH/BH/CH/DH) replaced, via a bit-field insert, with
+// every other bit preserved.
+func (p *arm64) lowerMOVB(src, dst operand.Op) {
+	if dmem, ok := dst.(operand.Mem); ok {
+		v := p.byteVal(src)
+		p.emit("MOVB %s, %s", v, p.memAsm(dmem))
+		return
+	}
+	v := p.byteVal(src)
+	lsb := 0
+	if isHighByte(dst) {
+		lsb = 8
+	}
+	p.emit("BFI $%d, %s, $8, %s", lsb, v, operandReg(dst))
+}
+
+// lowerMOVW lowers a 16-bit move. Stores write 16 bits of memory. Loads
+// zero-extend (Go's MOVH would sign-extend, inventing high bits x86 never
+// writes); this is exact when the destination's upper 48 bits are zero or
+// unread, the only patterns the generators use. Register-to-register moves
+// and immediates insert into bits 15:0, preserving the rest, as on x86.
+func (p *arm64) lowerMOVW(src, dst operand.Op) {
+	if dmem, ok := dst.(operand.Mem); ok {
+		if imm, ok := immAsm(src); ok {
+			p.emit("MOVD %s, %s", imm, scratchVal)
+			p.emit("MOVH %s, %s", scratchVal, p.memAsm(dmem))
+			return
+		}
+		p.emit("MOVH %s, %s", operandReg(src), p.memAsm(dmem))
+		return
+	}
+	if smem, ok := src.(operand.Mem); ok {
+		p.emit("MOVHU %s, %s", p.memAsm(smem), operandReg(dst))
+		return
+	}
+	v := operandReg(dst)
+	if imm, ok := immAsm(src); ok {
+		p.emit("MOVD %s, %s", imm, scratchVal)
+		p.emit("BFI $0, %s, $16, %s", scratchVal, v)
+		return
+	}
+	p.emit("BFI $0, %s, $16, %s", operandReg(src), v)
 }
 
 // lowerMOVL lowers a 32-bit move. x86 MOVL zero-extends a register destination
