@@ -426,6 +426,82 @@ func main() {
 	}
 	bextr("Bextr88", 8, 8)    // zstd's exact usage
 	bextr("Bextr4_12", 4, 12) // asymmetric start/len
+	// Constant-fold boundary cases: field reaching bit 63 (LSR form), field
+	// crossing past bit 63 (effective width shrinks), empty field, and start
+	// past bit 63 (both constant zero).
+	bextr("Bextr56_8", 56, 8)
+	bextr("Bextr8_56", 8, 56)
+	bextr("Bextr8_60", 8, 60)
+	bextr("Bextr0_0", 0, 0)
+	bextr("Bextr70_8", 70, 8)
+
+	// BZHI/SHLX/SHRX with the count loaded as an adjacent constant, exercising
+	// the immediate fold on arm64 (real BMI2 register semantics on amd64).
+	constCount := func(name string, val uint32, op func(count, src, dst operand.Op)) {
+		TEXT(name, NOSPLIT, "func(x uint64) uint64")
+		x := Load(Param("x"), GP64())
+		cnt := GP64()
+		MOVQ(operand.U32(val), cnt)
+		dst := GP64()
+		op(cnt, x, dst)
+		Store(dst, ReturnIndex(0))
+		RET()
+	}
+	constCount("BzhiConst13", 13, func(c, s, d operand.Op) { BZHIQ(c, s, d) })
+	constCount("BzhiConst0", 0, func(c, s, d operand.Op) { BZHIQ(c, s, d) })
+	constCount("BzhiConst64", 64, func(c, s, d operand.Op) { BZHIQ(c, s, d) })
+	constCount("ShlXConst9", 9, func(c, s, d operand.Op) { SHLXQ(c, s, d) })
+	constCount("ShrXConst9", 9, func(c, s, d operand.Op) { SHRXQ(c, s, d) })
+
+	// ---- huff0-style idioms: SETcc, ADC carry-accumulate, BSWAPL, ADDB ----
+
+	// SetGe: XOR-zeroed destination + SETGE, the huff0 exhausted-flag pattern.
+	TEXT("SetGe", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a, b, dst := GP64(), GP64(), GP64()
+		Load(Param("a"), a)
+		Load(Param("b"), b)
+		XORL(dst.As32(), dst.As32())
+		CMPQ(a, b)
+		SETGE(dst.As8())
+		Store(dst, ReturnIndex(0))
+		RET()
+	}
+
+	// AdcAccum: the huff0 fillFast32 exhausted counter: acc's low byte += (x<4),
+	// on an arbitrary accumulator (upper bits preserved, byte wrap exact).
+	TEXT("AdcAccum", NOSPLIT, "func(x, acc uint64) uint64")
+	{
+		x, acc := GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("acc"), acc)
+		CMPQ(x, operand.Imm(4))
+		ADCB(operand.I8(0), acc.As8())
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
+
+	// BswapL: 32-bit byte reverse, zero-extending like x86.
+	TEXT("BswapL", NOSPLIT, "func(x uint64) uint64")
+	{
+		x := GP64()
+		Load(Param("x"), x)
+		BSWAPL(x.As32())
+		Store(x, ReturnIndex(0))
+		RET()
+	}
+
+	// AddByte: exact x86 byte add on arbitrary values: y's low byte gets
+	// (x+y) mod 256, all other bits of y preserved.
+	TEXT("AddByte", NOSPLIT, "func(x, y uint64) uint64")
+	{
+		x, y := GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("y"), y)
+		ADDB(x.As8(), y.As8())
+		Store(y, ReturnIndex(0))
+		RET()
+	}
 
 	// MovbHighDst: MOVB into AH: replaces bits 15:8 of y with x's low byte,
 	// preserving everything else (the huff0 byte-packing idiom).

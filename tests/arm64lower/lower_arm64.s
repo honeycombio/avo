@@ -440,13 +440,7 @@ TEXT ·Bzhi(SB), NOSPLIT, $0-24
 TEXT ·Bextr88(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
 	MOVD $0x00000808, R1
-	UBFX $0, R1, $8, R16
-	UBFX $8, R1, $8, R15
-	LSR  R16, R0, R0
-	MOVD $1, R16
-	LSL  R15, R16, R16
-	SUB  $1, R16, R16
-	AND  R16, R0, R0
+	UBFX $8, R0, $8, R0
 	MOVD R0, ret+8(FP)
 	RET
 
@@ -455,14 +449,134 @@ TEXT ·Bextr88(SB), NOSPLIT, $0-16
 TEXT ·Bextr4_12(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
 	MOVD $0x00000c04, R1
-	UBFX $0, R1, $8, R16
-	UBFX $8, R1, $8, R15
-	LSR  R16, R0, R0
-	MOVD $1, R16
-	LSL  R15, R16, R16
-	SUB  $1, R16, R16
-	AND  R16, R0, R0
+	UBFX $4, R0, $12, R0
 	MOVD R0, ret+8(FP)
+	RET
+
+// func Bextr56_8(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr56_8(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000838, R1
+	LSR  $56, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func Bextr8_56(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr8_56(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00003808, R1
+	LSR  $8, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func Bextr8_60(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr8_60(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00003c08, R1
+	LSR  $8, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func Bextr0_0(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr0_0(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000000, R1
+	MOVD $0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func Bextr70_8(x uint64) uint64
+// Requires: BMI
+TEXT ·Bextr70_8(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000846, R1
+	MOVD $0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BzhiConst13(x uint64) uint64
+// Requires: BMI2
+TEXT ·BzhiConst13(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x0000000d, R1
+	AND  $8191, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BzhiConst0(x uint64) uint64
+// Requires: BMI2
+TEXT ·BzhiConst0(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000000, R1
+	MOVD $0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BzhiConst64(x uint64) uint64
+// Requires: BMI2
+TEXT ·BzhiConst64(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000040, R1
+	MOVD R0, ret+8(FP)
+	RET
+
+// func ShlXConst9(x uint64) uint64
+// Requires: BMI2
+TEXT ·ShlXConst9(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000009, R1
+	LSL  $9, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func ShrXConst9(x uint64) uint64
+// Requires: BMI2
+TEXT ·ShrXConst9(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x00000009, R1
+	LSR  $9, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func SetGe(a uint64, b uint64) uint64
+TEXT ·SetGe(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD $0, R2
+	CMP  R1, R0
+	CSET GE, R16
+	BFI  $0, R16, $8, R2
+	MOVD R2, ret+16(FP)
+	RET
+
+// func AdcAccum(x uint64, acc uint64) uint64
+TEXT ·AdcAccum(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  acc+8(FP), R1
+	CMP   $0x04, R0
+	CSINC HS, R1, R1, R16
+	BFI   $0, R16, $8, R1
+	MOVD  R1, ret+16(FP)
+	RET
+
+// func BswapL(x uint64) uint64
+TEXT ·BswapL(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	REVW R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func AddByte(x uint64, y uint64) uint64
+TEXT ·AddByte(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ADD  R0, R1, R15
+	BFI  $0, R15, $8, R1
+	MOVD R1, ret+16(FP)
 	RET
 
 // func MovbHighDst(x uint64, y uint64) uint64
