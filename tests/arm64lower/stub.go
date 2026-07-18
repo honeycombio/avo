@@ -78,6 +78,10 @@ func Bextr88(x uint64) uint64
 
 func Bextr4_12(x uint64) uint64
 
+func MovbHighDst(x uint64, y uint64) uint64
+
+func MovbLowPreserve(x uint64, y uint64) uint64
+
 func SelLtS(a uint64, b uint64, c uint64, d uint64) uint64
 
 func SelLeS(a uint64, b uint64, c uint64, d uint64) uint64

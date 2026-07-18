@@ -291,6 +291,24 @@ func TestBMI2(t *testing.T) {
 	}
 }
 
+// TestMovbExact covers x86 partial-register byte-move semantics: MOVB into a
+// register replaces only the addressed byte (low, or bits 15:8 for AH-style
+// destinations) and preserves every other bit — the byte-packing idiom huff0's
+// generated decoder relies on.
+func TestMovbExact(t *testing.T) {
+	xs := []uint64{0, 1, 0xdeadbeefcafef00d, ^uint64(0), 0x8000000000000000, 0x00ff00ff00ff00ff, 127}
+	for _, a := range xs {
+		for _, b := range xs {
+			if got, want := MovbHighDst(a, b), b&^uint64(0xff00)|(a&0xff)<<8; got != want {
+				t.Errorf("MovbHighDst(%#x, %#x) = %#x, want %#x", a, b, got, want)
+			}
+			if got, want := MovbLowPreserve(a, b), b&^uint64(0xff)|(a>>8)&0xff; got != want {
+				t.Errorf("MovbLowPreserve(%#x, %#x) = %#x, want %#x", a, b, got, want)
+			}
+		}
+	}
+}
+
 // TestCMOVConditions covers the CMOVcc conditions enabled by the completed table.
 func TestCMOVConditions(t *testing.T) {
 	const c, d = uint64(0x1111), uint64(0x2222)

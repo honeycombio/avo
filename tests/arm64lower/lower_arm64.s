@@ -75,7 +75,8 @@ TEXT ·ZeroExt32(SB), NOSPLIT, $0-16
 // func HighByte(x uint64) uint64
 TEXT ·HighByte(SB), NOSPLIT, $0-16
 	MOVD  x+0(FP), R0
-	UBFX  $8, R0, $8, R0
+	UBFX  $8, R0, $8, R16
+	BFI   $0, R16, $8, R0
 	MOVBU R0, R0
 	MOVD  R0, ret+8(FP)
 	RET
@@ -462,6 +463,23 @@ TEXT ·Bextr4_12(SB), NOSPLIT, $0-16
 	SUB  $1, R16, R16
 	AND  R16, R0, R0
 	MOVD R0, ret+8(FP)
+	RET
+
+// func MovbHighDst(x uint64, y uint64) uint64
+TEXT ·MovbHighDst(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R1
+	MOVD y+8(FP), R0
+	BFI  $8, R1, $8, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func MovbLowPreserve(x uint64, y uint64) uint64
+TEXT ·MovbLowPreserve(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R1
+	MOVD y+8(FP), R0
+	UBFX $8, R1, $8, R16
+	BFI  $0, R16, $8, R0
+	MOVD R0, ret+16(FP)
 	RET
 
 // func SelLtS(a uint64, b uint64, c uint64, d uint64) uint64

@@ -433,6 +433,22 @@ TEXT ·Bextr4_12(SB), NOSPLIT, $0-16
 	MOVQ   AX, ret+8(FP)
 	RET
 
+// func MovbHighDst(x uint64, y uint64) uint64
+TEXT ·MovbHighDst(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), CX
+	MOVQ y+8(FP), AX
+	MOVB CL, AH
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func MovbLowPreserve(x uint64, y uint64) uint64
+TEXT ·MovbLowPreserve(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), CX
+	MOVQ y+8(FP), AX
+	MOVB CH, AL
+	MOVQ AX, ret+16(FP)
+	RET
+
 // func SelLtS(a uint64, b uint64, c uint64, d uint64) uint64
 // Requires: CMOV
 TEXT ·SelLtS(SB), NOSPLIT, $0-40
