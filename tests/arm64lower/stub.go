@@ -125,3 +125,5 @@ func SelMi(a uint64, b uint64, c uint64, d uint64) uint64
 func SelPl(a uint64, b uint64, c uint64, d uint64) uint64
 
 func StackAccum(x uint64, n uint64) uint64
+
+func ManySlotAccum(x uint64) uint64
