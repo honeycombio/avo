@@ -85,18 +85,17 @@ TEXT ·HighByte(SB), NOSPLIT, $0-16
 TEXT ·LoadIdx(SB), NOSPLIT, $0-24
 	MOVD p+0(FP), R0
 	MOVD i+8(FP), R1
-	ADD  R1<<3, R0, R15
-	MOVD (R15), R0
+	MOVD (R0)(R1<<3), R0
 	MOVD R0, ret+16(FP)
 	RET
 
 // func Copy16(dst *[16]byte, src *[16]byte)
 // Requires: SSE
 TEXT ·Copy16(SB), NOSPLIT, $0-16
-	MOVD dst+0(FP), R0
-	MOVD src+8(FP), R1
-	VLD1 (R1), [V0.B16]
-	VST1 [V0.B16], (R0)
+	MOVD  dst+0(FP), R0
+	MOVD  src+8(FP), R1
+	FMOVQ (R1), F0
+	FMOVQ F0, (R0)
 	RET
 
 // func LessS(a uint64, b uint64) uint64
@@ -290,8 +289,8 @@ TestL32_end:
 TEXT ·CmpW16Eq(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	AND  $0xffff, R0, R15
 	AND  $0xffff, R1, R16
+	AND  $0xffff, R0, R15
 	CMP  R16, R15
 	BEQ  CmpW16Eq_yes
 	MOVD $0x0000000000000000, R0
@@ -308,8 +307,8 @@ CmpW16Eq_end:
 TEXT ·CmpB8Ne(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	AND  $0xff, R0, R15
 	AND  $0xff, R1, R16
+	AND  $0xff, R0, R15
 	CMP  R16, R15
 	BNE  CmpB8Ne_diff
 	MOVD $0x0000000000000000, R0
@@ -326,8 +325,8 @@ CmpB8Ne_end:
 TEXT ·TestW16Eq(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD m+8(FP), R1
-	AND  $0xffff, R0, R15
 	AND  $0xffff, R1, R16
+	AND  $0xffff, R0, R15
 	TST  R16, R15
 	BEQ  TestW16Eq_zero
 	MOVD $0x0000000000000000, R0

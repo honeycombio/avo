@@ -434,7 +434,11 @@ func log2scale(s uint8) int {
 
 // memAsm lowers a memory operand to a simple base+disp arm64 operand string,
 // emitting an ADD into scratchAddr first for indexed operands.
-func (p *arm64) memAsm(m operand.Mem) string {
+func (p *arm64) memAsm(m operand.Mem) string { return p.memAsmW(m, 0) }
+
+// memAsmW renders a memory operand for a scalar access of the given width in
+// bytes (0 when the caller cannot use arm64's folded base+index form).
+func (p *arm64) memAsmW(m operand.Mem, width int) string {
 	if m.Symbol.Name != "" {
 		s := m.Symbol.String() + fmt.Sprintf("%+d", m.Disp)
 		if m.Base != nil {
@@ -452,6 +456,18 @@ func (p *arm64) memAsm(m operand.Mem) string {
 		return fmt.Sprintf("(%s)", rename(m.Base))
 	}
 	sh := log2scale(m.Scale)
+	// arm64 scalar loads/stores can fold base+index addressing into the
+	// instruction, saving the separate effective-address ADD that x86's richer
+	// addressing otherwise costs us on every access. The architecture allows it
+	// only when the index is unscaled or scaled by exactly the access width, and
+	// never alongside a displacement, so fall through to scratchAddr otherwise.
+	// width == 0 means the caller cannot use the folded form (e.g. FMOVQ).
+	if m.Disp == 0 && (m.Scale == 1 || (width > 0 && int(m.Scale) == width)) {
+		if sh == 0 {
+			return fmt.Sprintf("(%s)(%s)", rename(m.Base), rename(m.Index))
+		}
+		return fmt.Sprintf("(%s)(%s<<%d)", rename(m.Base), rename(m.Index), sh)
+	}
 	if sh == 0 {
 		p.emit("ADD %s, %s, %s", rename(m.Index), rename(m.Base), scratchAddr)
 	} else {
@@ -508,8 +524,15 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("MOVHU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVBQZX": // load/extend uint8, zero-extend
 		p.emit("MOVBU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
-	case "MOVUPS":
+	case "MOVUPS", "MOVOU", "MOVOA":
+		// 128-bit SSE moves. arm64 NEON loads/stores have no alignment
+		// requirement, so the aligned (MOVOA) and unaligned (MOVOU) forms lower
+		// identically.
 		p.lowerMOVUPS(ops[0], ops[1])
+	case "PXOR":
+		// 128-bit bitwise XOR of two vector registers.
+		a, b := operandReg(ops[0]), operandReg(ops[1])
+		p.emit("VEOR %s.B16, %s.B16, %s.B16", a, b, b)
 
 	// ---- arithmetic / logic (dst is last operand) ----
 	case "ADDQ":
@@ -520,6 +543,17 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.lowerArith("AND", "ANDS", ops[0], ops[1], flags)
 	case "ORQ":
 		p.lowerArith("ORR", "", ops[0], ops[1], flags)
+
+	// 32-bit ALU. x86 zero-extends a 32-bit register destination to 64 bits,
+	// which the arm64 W-forms do as well, so these map directly.
+	case "ADDL":
+		p.lowerArithW("ADDW", "ADDSW", ops[0], ops[1], flags)
+	case "SUBL":
+		p.lowerArithW("SUBW", "SUBSW", ops[0], ops[1], flags)
+	case "ANDL":
+		p.lowerArithW("ANDW", "ANDSW", ops[0], ops[1], flags)
+	case "ORL":
+		p.lowerArithW("ORRW", "", ops[0], ops[1], flags)
 	case "XORQ":
 		if ra, ok := ops[0].(reg.Register); ok {
 			if rb, ok := ops[1].(reg.Register); ok && rename(ra) == rename(rb) {
@@ -575,20 +609,38 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("REVW %s, %s", r, r)
 	case "INCQ":
 		p.lowerIncDec("ADD", "ADDS", ops[0], flags)
+	case "INCL":
+		p.lowerIncDec("ADDW", "ADDSW", ops[0], flags)
 	case "DECQ":
 		p.lowerIncDec("SUB", "SUBS", ops[0], flags)
 	case "DECL":
 		p.lowerIncDec("SUBW", "SUBSW", ops[0], flags)
 	case "NEGQ":
 		p.emit("NEG %s, %s", operandReg(ops[0]), operandReg(ops[0]))
+	case "NOTQ":
+		p.emit("MVN %s, %s", operandReg(ops[0]), operandReg(ops[0]))
 	case "SHRQ":
 		p.lowerShift("LSR", ops[0], ops[1])
 	case "SHLQ":
 		p.lowerShift("LSL", ops[0], ops[1])
+	case "SARQ":
+		p.lowerShift("ASR", ops[0], ops[1])
 	case "SHRL":
 		p.lowerShift("LSRW", ops[0], ops[1])
 	case "SHLL":
 		p.lowerShift("LSLW", ops[0], ops[1])
+	case "SARL":
+		p.lowerShift("ASRW", ops[0], ops[1])
+	case "SHLB":
+		// x86 SHLB shifts only the destination's low byte and leaves the rest of
+		// the register untouched. Shift in scratch and insert bits 7:0, matching
+		// the partial-register semantics (see lowerMOVB).
+		if isHighByte(ops[1]) {
+			panic("arm64: SHLB high-byte destination not supported")
+		}
+		d := operandReg(ops[1])
+		p.emit("LSLW %s, %s, %s", p.regOrImm(ops[0]), d, scratchVal)
+		p.emit("BFI $0, %s, $8, %s", scratchVal, d)
 	case "ROLQ":
 		p.lowerROL(ops[0], ops[1])
 
@@ -606,6 +658,12 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 
 	case "LEAQ":
 		p.lowerLEA(ops[0].(operand.Mem), operandReg(ops[1]))
+	case "LEAL":
+		// 32-bit LEA: the address arithmetic is computed modulo 2^32 and the
+		// result zero-extends into the 64-bit destination.
+		d := operandReg(ops[1])
+		p.lowerLEA(ops[0].(operand.Mem), d)
+		p.emit("MOVWU %s, %s", d, d)
 
 	case "BTSQ":
 		a := operandReg(ops[0])
@@ -613,6 +671,18 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("MOVD $1, %s", scratchVal)
 		p.emit("LSL %s, %s, %s", a, scratchVal, scratchVal)
 		p.emit("ORR %s, %s, %s", scratchVal, b, b)
+
+	case "BSFQ", "TZCNTQ":
+		// Index of the lowest set bit == count of trailing zeros, which arm64
+		// spells as reverse-then-count-leading-zeros. For a zero input this
+		// yields 64, matching TZCNT exactly; x86 BSF leaves the destination
+		// undefined there, so returning 64 is a valid refinement. The generators
+		// emit both mnemonics guarded by #ifdef GOAMD64_v3, and both lower here
+		// to the same sequence.
+		src := operandReg(ops[0])
+		dst := operandReg(ops[1])
+		p.emit("RBIT %s, %s", src, dst)
+		p.emit("CLZ %s, %s", dst, dst)
 
 	case "BSRQ":
 		src := operandReg(ops[0])
@@ -709,18 +779,19 @@ func (p *arm64) valReg(op operand.Op) string {
 
 // lowerMove handles MOV* of reg/imm/mem to reg/mem.
 func (p *arm64) lowerMove(op string, src, dst operand.Op) {
+	w := accessWidth(op)
 	dmem, dstIsMem := dst.(operand.Mem)
 	smem, srcIsMem := src.(operand.Mem)
 	switch {
 	case dstIsMem:
 		if imm, ok := immAsm(src); ok {
 			p.emit("MOVD %s, %s", imm, scratchVal)
-			p.emit("%s %s, %s", op, scratchVal, p.memAsm(dmem))
+			p.emit("%s %s, %s", op, scratchVal, p.memAsmW(dmem, w))
 			return
 		}
-		p.emit("%s %s, %s", op, operandReg(src), p.memAsm(dmem))
+		p.emit("%s %s, %s", op, operandReg(src), p.memAsmW(dmem, w))
 	case srcIsMem:
-		p.emit("%s %s, %s", op, p.memAsm(smem), operandReg(dst))
+		p.emit("%s %s, %s", op, p.memAsmW(smem, w), operandReg(dst))
 	default:
 		if imm, ok := immAsm(src); ok {
 			p.emit("%s %s, %s", op, imm, operandReg(dst))
@@ -744,7 +815,7 @@ func (p *arm64) byteVal(op operand.Op) string {
 		return scratchVal
 	}
 	if m, ok := op.(operand.Mem); ok {
-		p.emit("MOVBU %s, %s", p.memAsm(m), scratchVal)
+		p.emit("MOVBU %s, %s", p.memAsmW(m, 1), scratchVal)
 		return scratchVal
 	}
 	return operandReg(op)
@@ -757,7 +828,7 @@ func (p *arm64) byteVal(op operand.Op) string {
 func (p *arm64) lowerMOVB(src, dst operand.Op) {
 	if dmem, ok := dst.(operand.Mem); ok {
 		v := p.byteVal(src)
-		p.emit("MOVB %s, %s", v, p.memAsm(dmem))
+		p.emit("MOVB %s, %s", v, p.memAsmW(dmem, 1))
 		return
 	}
 	v := p.byteVal(src)
@@ -777,14 +848,14 @@ func (p *arm64) lowerMOVW(src, dst operand.Op) {
 	if dmem, ok := dst.(operand.Mem); ok {
 		if imm, ok := immAsm(src); ok {
 			p.emit("MOVD %s, %s", imm, scratchVal)
-			p.emit("MOVH %s, %s", scratchVal, p.memAsm(dmem))
+			p.emit("MOVH %s, %s", scratchVal, p.memAsmW(dmem, 2))
 			return
 		}
-		p.emit("MOVH %s, %s", operandReg(src), p.memAsm(dmem))
+		p.emit("MOVH %s, %s", operandReg(src), p.memAsmW(dmem, 2))
 		return
 	}
 	if smem, ok := src.(operand.Mem); ok {
-		p.emit("MOVHU %s, %s", p.memAsm(smem), operandReg(dst))
+		p.emit("MOVHU %s, %s", p.memAsmW(smem, 2), operandReg(dst))
 		return
 	}
 	v := operandReg(dst)
@@ -796,6 +867,22 @@ func (p *arm64) lowerMOVW(src, dst operand.Op) {
 	p.emit("BFI $0, %s, $16, %s", operandReg(src), v)
 }
 
+// accessWidth is the width in bytes a Go arm64 load/store mnemonic touches,
+// which determines whether an index may be scaled in a folded address operand.
+func accessWidth(op string) int {
+	switch op {
+	case "MOVD":
+		return 8
+	case "MOVW", "MOVWU":
+		return 4
+	case "MOVH", "MOVHU":
+		return 2
+	case "MOVB", "MOVBU":
+		return 1
+	}
+	return 0
+}
+
 // lowerMOVL lowers a 32-bit move. x86 MOVL zero-extends a register destination
 // to 64 bits, so loads and register-to-register moves use MOVWU (zero-extend);
 // Go arm64 MOVW would sign-extend. Stores write the low 32 bits.
@@ -803,14 +890,14 @@ func (p *arm64) lowerMOVL(src, dst operand.Op) {
 	if dmem, ok := dst.(operand.Mem); ok {
 		if imm, ok := immAsm(src); ok {
 			p.emit("MOVD %s, %s", imm, scratchVal)
-			p.emit("MOVW %s, %s", scratchVal, p.memAsm(dmem))
+			p.emit("MOVW %s, %s", scratchVal, p.memAsmW(dmem, 4))
 			return
 		}
-		p.emit("MOVW %s, %s", operandReg(src), p.memAsm(dmem))
+		p.emit("MOVW %s, %s", operandReg(src), p.memAsmW(dmem, 4))
 		return
 	}
 	if smem, ok := src.(operand.Mem); ok {
-		p.emit("MOVWU %s, %s", p.memAsm(smem), operandReg(dst))
+		p.emit("MOVWU %s, %s", p.memAsmW(smem, 4), operandReg(dst))
 		return
 	}
 	if imm, ok := immAsm(src); ok {
@@ -823,17 +910,32 @@ func (p *arm64) lowerMOVL(src, dst operand.Op) {
 
 // lowerMOVUPS lowers a 16-byte unaligned move between memory and a vector reg.
 func (p *arm64) lowerMOVUPS(src, dst operand.Op) {
+	// FMOVQ moves 128 bits and, unlike VLD1/VST1, takes a base+displacement
+	// operand directly. That keeps the common "MOVOU disp(base), X" a single
+	// instruction instead of materializing the address into a scratch register
+	// first, which matters in the literal-copy paths where 16-byte moves are
+	// dense. memAsm still folds an indexed operand into scratchAddr, and FMOVQ
+	// accepts that plain "(reg)" form too. F<n> and V<n> name the same physical
+	// register, so this interoperates with the VEOR/VMOV forms used elsewhere.
 	if dmem, ok := dst.(operand.Mem); ok {
-		addr := p.memAddr(dmem)
-		p.emit("VST1 [%s.B16], (%s)", operandReg(src), addr)
+		p.emit("FMOVQ %s, %s", vecAsF(src), p.memAsm(dmem))
 		return
 	}
 	if smem, ok := src.(operand.Mem); ok {
-		addr := p.memAddr(smem)
-		p.emit("VLD1 (%s), [%s.B16]", addr, operandReg(dst))
+		p.emit("FMOVQ %s, %s", p.memAsm(smem), vecAsF(dst))
 		return
 	}
-	panic("arm64: MOVUPS register-to-register not supported")
+	p.emit("VMOV %s.B16, %s.B16", operandReg(src), operandReg(dst))
+}
+
+// vecAsF renders a vector register under its F name, which the scalar FMOVQ
+// form expects (F<n> and V<n> are the same physical register).
+func vecAsF(op operand.Op) string {
+	name := operandReg(op)
+	if len(name) > 1 && name[0] == 'V' {
+		return "F" + name[1:]
+	}
+	panic(fmt.Sprintf("arm64: expected a vector register, got %q", name))
 }
 
 // lowerArith lowers "OP src, dst" (dst op= src). dst may be a register or memory
@@ -841,11 +943,17 @@ func (p *arm64) lowerMOVUPS(src, dst operand.Op) {
 // (sop) is used so a following branch/CMOV can consume NZCV.
 func (p *arm64) lowerArith(op, sop string, src, dst operand.Op, flags bool) {
 	mnem := op
+	synth := ""
 	if flags {
 		if sop == "" {
-			panic(fmt.Sprintf("arm64: %q has no flag-setting variant but a flag consumer follows", op))
+			// ORR/EOR have no arm64 flag-setting form. x86's logical ops clear
+			// CF and OF and set only ZF/SF meaningfully, so a following TST of
+			// the result reproduces every condition that can legitimately be
+			// read here; flagProducers rejects any other consumer.
+			synth = "TST"
+		} else {
+			mnem = sop
 		}
-		mnem = sop
 	}
 	if dmem, ok := dst.(operand.Mem); ok {
 		// Read-modify-write; src is a register or immediate (never memory too).
@@ -854,6 +962,9 @@ func (p *arm64) lowerArith(op, sop string, src, dst operand.Op, flags bool) {
 		p.emit("MOVD %s, %s", m, scratchVal)
 		p.emit("%s %s, %s, %s", mnem, s, scratchVal, scratchVal)
 		p.emit("MOVD %s, %s", scratchVal, m)
+		if synth != "" {
+			p.emit("TST %s, %s", scratchVal, scratchVal)
+		}
 		return
 	}
 	d := operandReg(dst)
@@ -864,9 +975,52 @@ func (p *arm64) lowerArith(op, sop string, src, dst operand.Op, flags bool) {
 		s = p.valReg(src) // loads memory source into scratch if needed
 	}
 	p.emit("%s %s, %s, %s", mnem, s, d, d)
+	if synth != "" {
+		p.emit("TST %s, %s", d, d)
+	}
 }
 
 // lowerIncDec lowers INC/DEC of a register or memory operand by 1.
+// lowerArithW is lowerArith for 32-bit operations. Register destinations use
+// the arm64 W-forms, which zero the upper 32 bits exactly as x86 does; memory
+// destinations are read-modify-written at 32-bit width.
+func (p *arm64) lowerArithW(op, sop string, src, dst operand.Op, flags bool) {
+	mnem := op
+	synth := ""
+	if flags {
+		if sop == "" {
+			synth = "TSTW" // see lowerArith
+		} else {
+			mnem = sop
+		}
+	}
+	if dmem, ok := dst.(operand.Mem); ok {
+		s := p.regOrImm(src)
+		m := p.memAsm(dmem)
+		p.emit("MOVWU %s, %s", m, scratchVal)
+		p.emit("%s %s, %s, %s", mnem, s, scratchVal, scratchVal)
+		p.emit("MOVW %s, %s", scratchVal, m)
+		if synth != "" {
+			p.emit("TSTW %s, %s", scratchVal, scratchVal)
+		}
+		return
+	}
+	d := operandReg(dst)
+	var s string
+	if imm, ok := immAsm(src); ok {
+		s = imm
+	} else if m, ok := src.(operand.Mem); ok {
+		p.emit("MOVWU %s, %s", p.memAsm(m), scratchVal)
+		s = scratchVal
+	} else {
+		s = operandReg(src)
+	}
+	p.emit("%s %s, %s, %s", mnem, s, d, d)
+	if synth != "" {
+		p.emit("TSTW %s, %s", d, d)
+	}
+}
+
 func (p *arm64) lowerIncDec(op, sop string, dst operand.Op, flags bool) {
 	mnem := op
 	if flags {
@@ -1126,8 +1280,7 @@ func (p *arm64) lowerTest(op string, a, b operand.Op) {
 // equality doesn't depend on sign, so no proof that the operands were already
 // clean above that width is needed, unlike the general sub-word compare case.
 func (p *arm64) lowerSubwordCompareEqNe(bits int, cmp string, a, b operand.Op) {
-	ra := p.zeroExtendEqNe(bits, a, scratchAddr)
-	rb := p.zeroExtendEqNe(bits, b, scratchVal)
+	ra, rb := p.materializeEqNe(bits, a, b)
 	// arm64 CMP Rm, Rn computes Rn - Rm; we only need Z, so the operand order
 	// does not matter here, but keep it consistent with lowerCompare (a - b).
 	p.emit("%s %s, %s", cmp, rb, ra)
@@ -1140,19 +1293,17 @@ func (p *arm64) lowerSubwordCompareEqNe(bits int, cmp string, a, b operand.Op) {
 // bits are always zero, so Z exactly reflects whether the low bits are all
 // zero, which is what EQ/NE tests.
 func (p *arm64) lowerSubwordTestEqNe(bits int, a, b operand.Op) {
-	ra := p.zeroExtendEqNe(bits, a, scratchAddr)
-	rb := p.zeroExtendEqNe(bits, b, scratchVal)
+	ra, rb := p.materializeEqNe(bits, a, b)
 	p.emit("TST %s, %s", rb, ra)
 }
 
 // zeroExtendEqNe materializes op, zero-extended to the given bit width (8 or
 // 16), into the given scratch register and returns its name.
 //
-// Memory operands are not supported: computing an indexed address reuses the
-// same two scratch registers this printer has available, and could clobber
-// the other operand's already-masked value held in one of them. Neither
-// subword-safe compare/test reaches this path with a memory operand today, so
-// this fails loud rather than risk silently corrupting a scratch register.
+// A memory operand needs no masking: the zero-extending load of that exact
+// width already produces the value. Callers must materialize a memory operand
+// before any other operand, because computing an indexed address clobbers
+// scratchAddr (see lowerSubwordCompareEqNe).
 func (p *arm64) zeroExtendEqNe(bits int, op operand.Op, scratch string) string {
 	mask := fmt.Sprintf("$0x%x", uint64(1)<<uint(bits)-1)
 	if imm, ok := immAsm(op); ok {
@@ -1160,11 +1311,31 @@ func (p *arm64) zeroExtendEqNe(bits int, op operand.Op, scratch string) string {
 		p.emit("AND %s, %s, %s", mask, scratch, scratch)
 		return scratch
 	}
-	if _, ok := op.(operand.Mem); ok {
-		panic("arm64: sub-word EQ/NE compare of a memory operand not supported")
+	if m, ok := op.(operand.Mem); ok {
+		ld := "MOVBU"
+		if bits == 16 {
+			ld = "MOVHU"
+		}
+		p.emit("%s %s, %s", ld, p.memAsm(m), scratch)
+		return scratch
 	}
 	p.emit("AND %s, %s, %s", mask, operandReg(op), scratch)
 	return scratch
+}
+
+// materializeEqNe zero-extends both operands of a sub-word compare/test into
+// the two scratch registers. x86 permits at most one memory operand, and that
+// one is materialized first: its address computation may use scratchAddr, which
+// would otherwise clobber a value already placed there.
+func (p *arm64) materializeEqNe(bits int, a, b operand.Op) (ra, rb string) {
+	if _, aIsMem := a.(operand.Mem); aIsMem {
+		ra = p.zeroExtendEqNe(bits, a, scratchAddr)
+		rb = p.zeroExtendEqNe(bits, b, scratchVal)
+		return ra, rb
+	}
+	rb = p.zeroExtendEqNe(bits, b, scratchVal)
+	ra = p.zeroExtendEqNe(bits, a, scratchAddr)
+	return ra, rb
 }
 
 // lowerSET lowers "SETcc dst". x86 SETcc writes only the low byte of dst, so
@@ -1222,13 +1393,13 @@ func armCond(cc string) (string, bool) {
 		return "GT", true // signed >
 	case "GE":
 		return "GE", true // signed >=
-	case "CS", "B", "LO":
+	case "CS", "B", "LO", "NAE":
 		return "LO", true // unsigned <
-	case "CC", "AE", "HS":
+	case "CC", "AE", "HS", "NB":
 		return "HS", true // unsigned >=
-	case "HI", "A":
+	case "HI", "A", "NBE":
 		return "HI", true // unsigned >
-	case "LS", "BE":
+	case "LS", "BE", "NA":
 		return "LS", true // unsigned <=
 	case "MI", "S":
 		return "MI", true // negative
@@ -1308,6 +1479,19 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 			if !ok {
 				panic(fmt.Sprintf("arm64: %s consumes flags from %s, which the lowering cannot emit as a flag-setter", ins.Opcode, prev.Opcode))
 			}
+			if isLogicalFlagOp(prev.Opcode) {
+				// These lower to op+TST, which reproduces ZF/SF but not CF/OF.
+				// x86 logical ops clear CF/OF, so a carry/overflow consumer here
+				// would be reading a constant -- almost certainly a bug, and not
+				// something the TST substitution can express.
+				if cond, isConsumer := consumerCondition(ins.Opcode); isConsumer {
+					switch cond {
+					case "EQ", "NE", "MI", "PL":
+					default:
+						panic(fmt.Sprintf("arm64: %s consumes condition %s from %s, but the logical-op lowering only reproduces ZF/SF", ins.Opcode, cond, prev.Opcode))
+					}
+				}
+			}
 			if mark {
 				setflags[k] = true
 			}
@@ -1347,13 +1531,28 @@ func isFlagTransparent(op string) bool {
 // silently branching on stale flags.
 func flagSetter(op string) (mark, ok bool) {
 	switch op {
-	case "ADDQ", "SUBQ", "ANDQ", "INCQ", "DECQ", "DECL":
+	case "ADDQ", "SUBQ", "ANDQ", "INCQ", "DECQ",
+		"ADDL", "SUBL", "ANDL", "INCL", "DECL":
+		return true, true
+	case "ORQ", "XORQ", "ORL", "XORL":
+		// No arm64 ORRS/EORS; lowerArith appends a TST instead. Only valid for
+		// Z/N-based consumers, which flagProducers verifies.
 		return true, true
 	case "CMPQ", "CMPL", "CMPW", "CMPB", "TESTQ", "TESTL", "TESTW", "TESTB":
 		return false, true
 	default:
 		return false, false
 	}
+}
+
+// isLogicalFlagOp reports whether an opcode is a bitwise OR/XOR, whose arm64
+// lowering has no flag-setting form and instead appends a TST (see lowerArith).
+func isLogicalFlagOp(op string) bool {
+	switch op {
+	case "ORQ", "XORQ", "ORL", "XORL":
+		return true
+	}
+	return false
 }
 
 // isSubwordCompare reports whether opcode is a sub-32-bit CMP/TEST, the only
