@@ -638,6 +638,21 @@ func main() {
 		RET()
 	}
 
+	// VecCopyIdx: 128-bit move through an indexed operand, the shape zstd's
+	// match-copy loop emits. arm64 has no register-offset form for these, so the
+	// address must be materialized.
+	TEXT("VecCopyIdx", NOSPLIT, "func(dst, src *[32]byte, i uint64)")
+	{
+		dst, src, i := GP64(), GP64(), GP64()
+		Load(Param("dst"), dst)
+		Load(Param("src"), src)
+		Load(Param("i"), i)
+		v := XMM()
+		MOVOU(operand.Mem{Base: src, Index: i, Scale: 1}, v)
+		MOVOU(v, operand.Mem{Base: dst, Index: i, Scale: 1})
+		RET()
+	}
+
 	// VecCopy: MOVOU load + MOVOU store with a displacement on each side.
 	TEXT("VecCopy", NOSPLIT, "func(dst, src *[32]byte)")
 	{

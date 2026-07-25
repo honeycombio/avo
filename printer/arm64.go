@@ -596,7 +596,9 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 	// only when the index is unscaled or scaled by exactly the access width, and
 	// never alongside a displacement, so fall through to scratchAddr otherwise.
 	// width == 0 means the caller cannot use the folded form (e.g. FMOVQ).
-	if m.Disp == 0 && (m.Scale == 1 || (width > 0 && int(m.Scale) == width)) {
+	// width == 0 means the caller has no folded form available (FMOVQ), so it
+	// must always get a plain base(+disp) operand.
+	if width > 0 && m.Disp == 0 && (m.Scale == 1 || int(m.Scale) == width) {
 		if sh == 0 {
 			return fmt.Sprintf("(%s)(%s)", base, index)
 		}

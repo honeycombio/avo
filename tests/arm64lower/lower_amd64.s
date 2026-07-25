@@ -859,6 +859,16 @@ TEXT ·VecZero(SB), NOSPLIT, $0-8
 	MOVOU X0, (AX)
 	RET
 
+// func VecCopyIdx(dst *[32]byte, src *[32]byte, i uint64)
+// Requires: SSE2
+TEXT ·VecCopyIdx(SB), NOSPLIT, $0-24
+	MOVQ  dst+0(FP), AX
+	MOVQ  src+8(FP), CX
+	MOVQ  i+16(FP), DX
+	MOVOU (CX)(DX*1), X0
+	MOVOU X0, (AX)(DX*1)
+	RET
+
 // func VecCopy(dst *[32]byte, src *[32]byte)
 // Requires: SSE2
 TEXT ·VecCopy(SB), NOSPLIT, $0-16

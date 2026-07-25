@@ -534,6 +534,15 @@ func TestVectorMoves(t *testing.T) {
 	for i := range b {
 		b[i] = byte(i * 3)
 	}
+	var c, d [32]byte
+	for i := range d {
+		d[i] = byte(i + 7)
+	}
+	VecCopyIdx(&c, &d, 8)
+	if !bytes.Equal(c[8:24], d[8:24]) {
+		t.Errorf("VecCopyIdx copied %v, want %v", c[8:24], d[8:24])
+	}
+
 	VecCopy(&a, &b)
 	if !bytes.Equal(a[16:], b[16:]) {
 		t.Errorf("VecCopy copied %v, want %v", a[16:], b[16:])

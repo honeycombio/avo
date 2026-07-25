@@ -178,6 +178,8 @@ func LeaL(x uint64, y uint64) uint64
 
 func VecZero(dst *[16]byte)
 
+func VecCopyIdx(dst *[32]byte, src *[32]byte, i uint64)
+
 func VecCopy(dst *[32]byte, src *[32]byte)
 
 func Prop0(x uint64, y uint64) uint64
