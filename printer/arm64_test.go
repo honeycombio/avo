@@ -119,3 +119,37 @@ func TestARM64SubwordCompareGuard(t *testing.T) {
 		Print(t, ctx, printer.NewARM64Asm)
 	})
 }
+
+// TestARM64CrossLabelFlagsRejected checks that a conditional branch whose flags
+// are produced before a label fails generation instead of silently emitting a
+// non-flag-setting op. The lowering recovers the producer/consumer link by
+// scanning backwards through a straight-line run; when a label intervenes the
+// flags arrive along a control-flow edge it does not model, and quietly leaving
+// the producer unmarked would let the branch read whatever NZCV survived.
+func TestARM64CrossLabelFlagsRejected(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("crosslabel")
+	ctx.SignatureExpr("func(x, y uint64) uint64")
+	x, y := reg.RAX, reg.RCX
+	ctx.SUBQ(y, x) // producer
+	ctx.Label("join")
+	ctx.JEQ(operand.LabelRef("yes")) // consumer, separated by the label
+	ctx.Label("yes")
+	ctx.RET()
+
+	f, errs := ctx.Result()
+	if errs != nil {
+		t.Fatal(errs)
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a panic for flags read across a label, got none")
+		}
+		if msg, ok := r.(string); !ok || !strings.Contains(msg, "across a label") {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+}

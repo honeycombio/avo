@@ -1470,7 +1470,13 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 			}
 			prev, isInstr := nodes[k].(*ir.Instruction)
 			if !isInstr {
-				break // label or other boundary: producer not in this straight-line run
+				// A label: the flags this consumer reads were produced on some
+				// predecessor edge, which this printer does not model. Leaving
+				// the producer unmarked would emit a non-flag-setting op and let
+				// the branch run on whatever NZCV happened to survive --
+				// plausible-looking but wrong assembly -- so fail generation.
+				panic(fmt.Sprintf("arm64: %s reads flags produced across a label; "+
+					"the lowering tracks flags only within a straight-line run", ins.Opcode))
 			}
 			if isFlagTransparent(prev.Opcode) {
 				continue
