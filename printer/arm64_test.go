@@ -524,3 +524,76 @@ func TestARM64NoProducerRejected(t *testing.T) {
 	}()
 	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
 }
+
+// TestARM64DirectiveNodeIntegrity covers the two ways liveNodes could drop
+// content silently. Both concern the same asymmetry: this printer resolves
+// GOAMD64 conditionals while the amd64 side keeps them, so anything discarded
+// along with a resolved directive is discarded from only one of the two
+// binaries.
+func TestARM64DirectiveNodeIntegrity(t *testing.T) {
+	t.Run("MixedComment", func(t *testing.T) {
+		// The #endif is owned and resolved away; the #include is not, and would
+		// survive into the amd64 output while vanishing here.
+		ctx := build.NewContext()
+		ctx.Function("mixed")
+		ctx.SignatureExpr("func()")
+		ctx.Comment("#ifdef GOAMD64_v3")
+		ctx.Comment("#endif", "#include \"extra.h\"")
+		ctx.RET()
+
+		f, errs := ctx.Result()
+		if errs != nil {
+			t.Fatal(errs)
+		}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Fatal("expected a panic for a comment mixing owned and foreign directives")
+			}
+			if msg, ok := r.(string); !ok || !strings.Contains(msg, "one directive per comment") {
+				t.Fatalf("unexpected panic: %v", r)
+			}
+		}()
+		_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+	})
+
+	t.Run("UnclosedConditional", func(t *testing.T) {
+		// Without the guard this emits a TEXT block with an empty body -- the
+		// RET included -- and says nothing about it.
+		ctx := build.NewContext()
+		ctx.Function("unclosed")
+		ctx.SignatureExpr("func()")
+		ctx.Comment("#ifdef GOAMD64_v3")
+		ctx.RET()
+
+		f, errs := ctx.Result()
+		if errs != nil {
+			t.Fatal(errs)
+		}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Fatal("expected a panic for an unclosed GOAMD64 conditional")
+			}
+			if msg, ok := r.(string); !ok || !strings.Contains(msg, "unclosed") {
+				t.Fatalf("unexpected panic: %v", r)
+			}
+		}()
+		_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+	})
+
+	t.Run("ForeignUnclosedIsAllowed", func(t *testing.T) {
+		// A conditional this printer does not own is the assembler's business;
+		// leaving it open must not be rejected here.
+		ctx := build.NewContext()
+		ctx.Function("foreignopen")
+		ctx.SignatureExpr("func()")
+		ctx.Comment("#ifdef SOMETHING_ELSE")
+		ctx.RET()
+
+		out := printARM64(t, ctx, printer.NewGoRunConfig())
+		if !strings.Contains(out, "RET") {
+			t.Errorf("expected the body to survive a foreign conditional:\n%s", out)
+		}
+	})
+}

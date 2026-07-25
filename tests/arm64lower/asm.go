@@ -939,6 +939,61 @@ func main() {
 		BZHIQ(n, x, d)
 	})
 
+	// ---- 64-bit immediates with bit 31 set ----
+	//
+	// x86-64 has no 64-bit immediate for these forms: it encodes imm32 and the
+	// CPU sign-extends. So $0x80000000 in a Q-width slot means
+	// 0xffffffff80000000, and Go's assembler accepts the unsigned spelling
+	// without complaint. Every case below is chosen so the two readings give
+	// different answers.
+
+	un("AndQBit31", func(x, d reg.GPVirtual) { MOVQ(x, d); ANDQ(operand.U32(0x80000000), d) })
+	un("AddQBit31", func(x, d reg.GPVirtual) { MOVQ(x, d); ADDQ(operand.U32(0x80000000), d) })
+	un("OrQBit31", func(x, d reg.GPVirtual) { MOVQ(x, d); ORQ(operand.U32(0xffffffe0), d) })
+
+	// A compare against such an immediate, read through a branch.
+	TEXT("CmpQBit31", NOSPLIT, "func(x uint64) uint64")
+	{
+		x, res := GP64(), GP64()
+		Load(Param("x"), x)
+		CMPQ(x, operand.U32(0x80000000))
+		JEQ(operand.LabelRef("cqb_eq"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("cqb_end"))
+		Label("cqb_eq")
+		MOVQ(operand.U64(1), res)
+		Label("cqb_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
+	// TESTQ's mask likewise covers bits 63:31, not just bit 31.
+	un("TestQBit31", func(x, d reg.GPVirtual) {
+		XORQ(d, d)
+		TESTQ(operand.U32(0x80000000), x)
+		SETEQ(d.As8())
+	})
+
+	// A 64-bit store of such an immediate writes the sign-extended value.
+	TEXT("MovQBit31Mem", NOSPLIT, "func(p *uint64)")
+	{
+		p := GP64()
+		Load(Param("p"), p)
+		MOVQ(operand.U32(0x80000000), operand.Mem{Base: p})
+		RET()
+	}
+
+	// Control: MOVQ of the same immediate INTO A REGISTER is narrowed by the
+	// assembler to a zero-extending MOVL, so here the literal reading is right.
+	// This must keep agreeing -- it is what stops the fix from over-applying.
+	TEXT("MovQBit31Reg", NOSPLIT, "func() uint64")
+	{
+		d := GP64()
+		MOVQ(operand.U32(0x80000000), d)
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
 	// ---- filling out the dispatch table ----
 	//
 	// Everything below exists because TestOpcodeDispatchIsCovered found it

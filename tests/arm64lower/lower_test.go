@@ -944,3 +944,76 @@ func TestReviewRound4Regressions(t *testing.T) {
 		}
 	})
 }
+
+// TestQWidthImmediates covers 64-bit operand slots holding an immediate with
+// bit 31 set. x86-64 encodes imm32 there and sign-extends it, so $0x80000000
+// means 0xffffffff80000000 -- and Go's assembler takes the unsigned spelling
+// without complaint, which is what made this invisible. Every case is chosen so
+// the literal and sign-extended readings disagree.
+func TestQWidthImmediates(t *testing.T) {
+	const se = uint64(0xffffffff80000000) // what $0x80000000 means at Q width
+
+	xs := []uint64{
+		0, 1, 0x80000000, se, ^uint64(0), 1 << 63, 0x7fffffff, 0xdeadbeefcafef00d,
+	}
+
+	t.Run("AndQ", func(t *testing.T) {
+		for _, x := range xs {
+			if got, want := AndQBit31(x), x&se; got != want {
+				t.Errorf("AndQBit31(%#x) = %#x, want %#x", x, got, want)
+			}
+		}
+	})
+	t.Run("AddQ", func(t *testing.T) {
+		for _, x := range xs {
+			if got, want := AddQBit31(x), x+se; got != want {
+				t.Errorf("AddQBit31(%#x) = %#x, want %#x", x, got, want)
+			}
+		}
+	})
+	t.Run("OrQ", func(t *testing.T) {
+		for _, x := range xs {
+			if got, want := OrQBit31(x), x|uint64(0xffffffffffffffe0); got != want {
+				t.Errorf("OrQBit31(%#x) = %#x, want %#x", x, got, want)
+			}
+		}
+	})
+	t.Run("CmpQ", func(t *testing.T) {
+		// Probed with both readings of the constant: only one is equal.
+		for _, x := range xs {
+			want := uint64(0)
+			if x == se {
+				want = 1
+			}
+			if got := CmpQBit31(x); got != want {
+				t.Errorf("CmpQBit31(%#x) = %d, want %d", x, got, want)
+			}
+		}
+	})
+	t.Run("TestQ", func(t *testing.T) {
+		for _, x := range xs {
+			want := uint64(0)
+			if x&se == 0 {
+				want = 1
+			}
+			if got := TestQBit31(x); got != want {
+				t.Errorf("TestQBit31(%#x) = %d, want %d", x, got, want)
+			}
+		}
+	})
+	t.Run("MovQToMem", func(t *testing.T) {
+		v := uint64(0)
+		MovQBit31Mem(&v)
+		if v != se {
+			t.Errorf("MovQBit31Mem stored %#x, want %#x", v, se)
+		}
+	})
+	t.Run("MovQToRegIsUnaffected", func(t *testing.T) {
+		// The assembler narrows this one to a zero-extending MOVL, so the
+		// literal value is correct here. If the sign-extension rewrite ever
+		// leaks into this path, this catches it.
+		if got, want := MovQBit31Reg(), uint64(0x80000000); got != want {
+			t.Errorf("MovQBit31Reg() = %#x, want %#x", got, want)
+		}
+	})
+}

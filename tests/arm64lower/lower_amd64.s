@@ -3152,6 +3152,63 @@ TEXT ·BzhiConstNeg(SB), NOSPLIT, $0-16
 	MOVQ  AX, ret+8(FP)
 	RET
 
+// func AndQBit31(x uint64) uint64
+TEXT ·AndQBit31(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	ANDQ $0x80000000, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func AddQBit31(x uint64) uint64
+TEXT ·AddQBit31(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	ADDQ $0x80000000, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func OrQBit31(x uint64) uint64
+TEXT ·OrQBit31(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	ORQ  $0xffffffe0, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func CmpQBit31(x uint64) uint64
+TEXT ·CmpQBit31(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	CMPQ AX, $0x80000000
+	JEQ  cqb_eq
+	MOVQ $0x0000000000000000, AX
+	JMP  cqb_end
+
+cqb_eq:
+	MOVQ $0x0000000000000001, AX
+
+cqb_end:
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func TestQBit31(x uint64) uint64
+TEXT ·TestQBit31(SB), NOSPLIT, $0-16
+	MOVQ  x+0(FP), AX
+	XORQ  CX, CX
+	TESTQ $0x80000000, AX
+	SETEQ CL
+	MOVQ  CX, ret+8(FP)
+	RET
+
+// func MovQBit31Mem(p *uint64)
+TEXT ·MovQBit31Mem(SB), NOSPLIT, $0-8
+	MOVQ p+0(FP), AX
+	MOVQ $0x80000000, (AX)
+	RET
+
+// func MovQBit31Reg() uint64
+TEXT ·MovQBit31Reg(SB), NOSPLIT, $0-8
+	MOVQ $0x80000000, AX
+	MOVQ AX, ret+0(FP)
+	RET
+
 // func IncQ(x uint64) uint64
 TEXT ·IncQ(SB), NOSPLIT, $0-16
 	MOVQ x+0(FP), AX

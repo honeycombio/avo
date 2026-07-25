@@ -414,6 +414,18 @@ func liveNodes(nodes []ir.Node) []ir.Node {
 	out := make([]ir.Node, 0, len(nodes))
 	for _, n := range nodes {
 		if c, ok := n.(*ir.Comment); ok && pp.consume(c.Lines) {
+			// A comment carrying a GOAMD64 directive this evaluator owns is
+			// dropped whole, so anything else sharing the node disappears with
+			// it. For a plain prose line that is harmless, but a second
+			// directive would survive into the amd64 output and vanish from the
+			// arm64 one -- an "#include" assembled into one binary and not the
+			// other. Refuse rather than silently drop it.
+			for _, line := range c.Lines {
+				if d := strings.TrimSpace(line); strings.HasPrefix(d, "#") && !isGOAMD64Directive(d) {
+					panic(fmt.Sprintf("arm64: comment mixes a GOAMD64 directive with %q; "+
+						"emit one directive per comment so the two architectures see the same text", d))
+				}
+			}
 			continue
 		}
 		if !pp.active() {
@@ -421,7 +433,34 @@ func liveNodes(nodes []ir.Node) []ir.Node {
 		}
 		out = append(out, n)
 	}
+	// An owned conditional left open swallows the rest of the function --
+	// including its RET -- and would emit a TEXT block with an empty body. The
+	// amd64 assembler rejects the unbalanced directive, so this is only ever a
+	// question of which side reports it, but the arm64 output should not depend
+	// on that. Foreign frames are the assembler's business and are left alone.
+	for _, f := range pp.stack {
+		if f.owned {
+			panic("arm64: GOAMD64 conditional left unclosed; the rest of the function would be dropped")
+		}
+	}
 	return out
+}
+
+// isGOAMD64Directive reports whether a preprocessor line is one goamd64Cond
+// evaluates, i.e. a conditional keyed on a GOAMD64_* symbol or the #else/#endif
+// that pairs with one.
+func isGOAMD64Directive(d string) bool {
+	fields := strings.Fields(d)
+	if len(fields) == 0 {
+		return false
+	}
+	switch fields[0] {
+	case "#else", "#endif":
+		return true
+	case "#ifdef", "#ifndef":
+		return len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_")
+	}
+	return false
 }
 
 // zeroSelf lowers x86's "XOR r, r" zeroing idiom. The register is cleared with
@@ -445,7 +484,8 @@ func (p *arm64) emit(format string, args ...interface{}) {
 	}
 	// The lowering writes the destination last, so scratchAddr appearing there
 	// means this instruction may overwrite the cached address. A store's address
-	// operand also lands last, which merely costs us the optimization.
+	// operand also lands last, but renders as "(R15)" or "8(R15)" rather than a
+	// bare register, so it does not match and the cache is correctly kept.
 	if p.addrOK && lastOperandIs(operands, scratchAddr) {
 		p.addrOK = false
 	}
@@ -605,6 +645,45 @@ func (p *arm64) knownConst(op operand.Op) (int64, bool) {
 	return p.constVal, true
 }
 
+// immAsmQ renders an immediate destined for a 64-bit operand slot.
+//
+// x86-64 has no 64-bit immediate for the ALU, compare, test and store forms: it
+// encodes imm32 and the CPU SIGN-EXTENDS it. So "ANDQ $0x80000000, AX" does not
+// mask with 0x80000000, it masks with 0xffffffff80000000 -- and Go's assembler
+// accepts the unsigned spelling without complaint, quietly encoding the
+// sign-extended value. arm64 reads the same text literally, so one instruction
+// computes two different things. Rendering the sign-extended value explicitly
+// makes them agree.
+//
+// This is deliberately not folded into immAsm or regOrImm. Those are shared
+// with the 32-bit lowerings, where imm32 is the whole operand and nothing is
+// extended, and with MOVQ-to-register, which the assembler narrows to a
+// zero-extending MOVL; in both, the literal reading is the correct one.
+func immAsmQ(op operand.Op) (string, bool) {
+	s, ok := immAsm(op)
+	if !ok {
+		return "", false
+	}
+	v, ok := immVal(op)
+	if !ok {
+		// Unparsable means the sign-extension question cannot be answered, and
+		// passing the text through would be a guess about which way it goes.
+		panic(fmt.Sprintf("arm64: cannot interpret 64-bit immediate %s", s))
+	}
+	if v >= 1<<31 && v < 1<<32 {
+		return fmt.Sprintf("$%d", int64(int32(uint32(v)))), true
+	}
+	return s, true
+}
+
+// regOrImmQ is regOrImm for a 64-bit operand slot.
+func (p *arm64) regOrImmQ(op operand.Op) string {
+	if imm, ok := immAsmQ(op); ok {
+		return imm
+	}
+	return operandReg(op)
+}
+
 func immVal(op operand.Op) (int64, bool) {
 	c, ok := immAsm(op)
 	if !ok {
@@ -661,7 +740,6 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 	// addressing otherwise costs us on every access. The architecture allows it
 	// only when the index is unscaled or scaled by exactly the access width, and
 	// never alongside a displacement, so fall through to scratchAddr otherwise.
-	// width == 0 means the caller cannot use the folded form (e.g. FMOVQ).
 	// width == 0 means the caller has no folded form available (FMOVQ), so it
 	// must always get a plain base(+disp) operand.
 	if width > 0 && m.Disp == 0 && (m.Scale == 1 || int(m.Scale) == width) {
@@ -1010,6 +1088,11 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("CLZ %s, %s", dst, dst)
 
 	case "BSRQ":
+		// Index of the highest set bit. x86 leaves the destination architecturally
+		// undefined for a zero input (real hardware leaves it unchanged); this
+		// yields -1, since CLZ gives 64 and the subtraction runs past zero. That
+		// is a refinement of undefined, like the BSF case above -- but it means a
+		// differential test must not feed BSR a zero input and expect agreement.
 		src := operandReg(ops[0])
 		dst := operandReg(ops[1])
 		p.emit("CLZ %s, %s", src, scratchVal)
@@ -1137,7 +1220,13 @@ func (p *arm64) lowerMove(op string, src, dst operand.Op) {
 	smem, srcIsMem := src.(operand.Mem)
 	switch {
 	case dstIsMem:
-		if imm, ok := immAsm(src); ok {
+		// A 64-bit store takes imm32 sign-extended; narrower stores take the
+		// immediate literally, and only the low bytes are written anyway.
+		immOf := immAsm
+		if w == 8 {
+			immOf = immAsmQ
+		}
+		if imm, ok := immOf(src); ok {
 			p.emit("MOVD %s, %s", imm, scratchVal)
 			p.emit("%s %s, %s", op, scratchVal, p.memAsmW(dmem, w))
 			return
@@ -1324,7 +1413,7 @@ func (p *arm64) lowerArith(op, sop string, src, dst operand.Op, flags bool) {
 	}
 	if dmem, ok := dst.(operand.Mem); ok {
 		// Read-modify-write; src is a register or immediate (never memory too).
-		s := p.regOrImm(src)
+		s := p.regOrImmQ(src)
 		m := p.memAsm(dmem)
 		p.emit("MOVD %s, %s", m, scratchVal)
 		p.emit("%s %s, %s, %s", mnem, s, scratchVal, scratchVal)
@@ -1336,7 +1425,7 @@ func (p *arm64) lowerArith(op, sop string, src, dst operand.Op, flags bool) {
 	}
 	d := operandReg(dst)
 	var s string
-	if imm, ok := immAsm(src); ok {
+	if imm, ok := immAsmQ(src); ok {
 		s = imm
 	} else {
 		s = p.valReg(src) // loads memory source into scratch if needed
@@ -1657,7 +1746,14 @@ func (p *arm64) lowerLEA(m operand.Mem, dst string) {
 // (cmn), so callers select the operand width: CMP/CMN for 64-bit, CMPW/CMNW for
 // 32-bit. At most one of a, b is a memory operand (loaded into scratchVal).
 func (p *arm64) lowerCompare(cmp, cmn string, a, b operand.Op, width int) {
-	if imm, ok := immAsm(b); ok {
+	// The sign-extension rewrite has to happen before negImm, so a value like
+	// $0xfffffff0 becomes $-16 and takes the (equivalent) CMN path rather than
+	// comparing against four billion.
+	immOf := immAsm
+	if width == 8 {
+		immOf = immAsmQ
+	}
+	if imm, ok := immOf(b); ok {
 		aReg := p.valRegW(a, width)
 		if neg, val := negImm(imm); neg {
 			p.emit("%s $%d, %s", cmn, val, aReg)
@@ -1685,7 +1781,11 @@ func (p *arm64) lowerTest(op string, a, b operand.Op, width int) {
 		a, b = b, a
 	}
 	aReg := p.valRegW(a, width)
-	p.emit("%s %s, %s", op, p.regOrImm(b), aReg)
+	rhs := p.regOrImm(b)
+	if width == 8 {
+		rhs = p.regOrImmQ(b)
+	}
+	p.emit("%s %s, %s", op, rhs, aReg)
 }
 
 // lowerSubwordCompareEqNe lowers a sub-32-bit CMP (bits is 8 or 16) whose only
@@ -1959,7 +2059,7 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 					// branch then reads stale NZCV on arm64 only. Treat it like a
 					// label: the flags cross an edge this printer does not model.
 					panic(fmt.Sprintf("arm64: %s reads flags across the preprocessor directive %q, "+
-						"which this printer does not evaluate", ins.Opcode, strings.TrimSpace(cm.Lines[0])))
+						"which this printer does not evaluate", ins.Opcode, firstDirective(cm)))
 				}
 				continue
 			}
@@ -2042,6 +2142,17 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 // consumes and removes the GOAMD64 conditionals it understands, so anything
 // left is a real conditional to the assembler and an invisible one here: the
 // flag scans must stop at it rather than read through both arms.
+// firstDirective returns the directive line a diagnostic should name, rather
+// than blaming the comment's first line when the directive is on a later one.
+func firstDirective(c *ir.Comment) string {
+	for _, line := range c.Lines {
+		if d := strings.TrimSpace(line); strings.HasPrefix(d, "#") {
+			return d
+		}
+	}
+	return ""
+}
+
 func hasForeignDirective(c *ir.Comment) bool {
 	for _, line := range c.Lines {
 		// Any '#'-leading line, not just a known conditional keyword. Go's
