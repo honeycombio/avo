@@ -87,6 +87,17 @@ type arm64 struct {
 // NewARM64Asm constructs a printer for writing Go arm64 assembly files by
 // lowering an amd64 avo instruction stream. EXPERIMENTAL.
 //
+// Preprocessor directives are assumed to be live in BOTH outputs. avo emits
+// them as comments and klauspost/compress rewrites "\t// #" back to "#" in a
+// postprocessing step, which is the pipeline this printer is built for: the
+// GOAMD64 conditionals are resolved here (only the arm the arm64 build takes is
+// emitted), and any other directive is treated as a control-flow boundary that
+// the flag, constant and address analyses stop at. Without that rewrite the
+// directives stay inert comments on the amd64 side while the GOAMD64 arms are
+// still resolved on the arm64 side, so the two outputs would no longer
+// correspond; and a program whose directives never go live pays for barriers it
+// does not need.
+//
 // An unsupported instruction or operand form aborts generation with a panic
 // rather than emitting assembly that differs from the amd64 original, so a
 // program that generates is a program whose two versions agree -- with one
@@ -278,6 +289,20 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 		case *ir.Comment:
 			p.flush()
 			p.ensureclear()
+			if hasForeignDirective(n) {
+				// A directive this printer does not evaluate becomes a real
+				// control-flow boundary in the assembled output, so every
+				// analysis that carries state along a straight line has to stop
+				// here -- the same treatment the label case above gets. Both of
+				// these caches record what an earlier instruction established;
+				// if that instruction sat inside an arm the assembler drops, the
+				// state describes code that is no longer there. Missing this is
+				// how a constant folded inside an #ifdef ended up used outside
+				// it, and how a materialized address outlived the ADD that built
+				// it.
+				p.constOK = false
+				p.addrOK = false
+			}
 			for _, line := range n.Lines {
 				p.Printf("\t// %s\n", line)
 			}
@@ -728,10 +753,7 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 				panic(fmt.Sprintf("arm64: %s from a high-byte register cannot be expressed on x86-64: "+
 					"the 64-bit destination forces a REX prefix, which renames that operand to SPL", i.Opcode))
 			}
-			if ph, ok := ops[1].(reg.Physical); ok && ph.PhysicalIndex() >= 8 {
-				panic(fmt.Sprintf("arm64: %s from a high-byte register into an extended register (index %d) "+
-					"needs a REX prefix on x86-64, which renames the source to SPL", i.Opcode, ph.PhysicalIndex()))
-			}
+			checkHighByteEncodable(ops[0], ops[1])
 			ext := "UBFX"
 			if i.Opcode == "MOVBLSX" {
 				ext = "SBFX"
@@ -818,6 +840,8 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		// bit, and a memory destination got an 8-byte read-modify-write.
 		p.lowerArithW("EORW", "", ops[0], ops[1], flags)
 	case "ADDB":
+		checkHighByteEncodable(ops[0], ops[1])
+		checkHighByteEncodable(ops[1], ops[0])
 		// x86 ADDB replaces only the destination's addressed byte with the byte
 		// sum (wrapping mod 256). Compute the sum in scratch — addition carries
 		// travel upward only, so garbage above bit 7 of either input cannot
@@ -1155,6 +1179,11 @@ func (p *arm64) byteVal(op operand.Op) string {
 // (bits 7:0, or 15:8 for AH/BH/CH/DH) replaced, via a bit-field insert, with
 // every other bit preserved.
 func (p *arm64) lowerMOVB(src, dst operand.Op) {
+	// Either operand may be the high-byte one, and either may be what forces the
+	// REX prefix that makes the other unreachable -- including a memory operand
+	// based on an extended register.
+	checkHighByteEncodable(src, dst)
+	checkHighByteEncodable(dst, src)
 	if dmem, ok := dst.(operand.Mem); ok {
 		v := p.byteVal(src)
 		p.emit("MOVB %s, %s", v, p.memAsmW(dmem, 1))
@@ -1460,9 +1489,16 @@ func (p *arm64) lowerRORX(imm, src, dst operand.Op) {
 func (p *arm64) lowerBZHI(count, src, dst operand.Op) {
 	d := operandReg(dst)
 	if n, ok := p.knownConst(count); ok {
+		// x86 reads the bit count from the low 8 bits of the control operand and
+		// ignores the rest, so the whole constant is the wrong thing to classify:
+		// $256 means zero bits (clear the destination), not "at least 64" (copy
+		// it), and $-1 means 255 (copy) rather than a negative count (clear).
+		// Both of those get the answer exactly backwards. lowerBEXTR already
+		// masks; this is the same rule.
+		n &= 0xff
 		s := p.srcRegInto(src, d)
 		switch {
-		case n <= 0:
+		case n == 0:
 			p.emit("MOVD $0, %s", d)
 		case n >= 64:
 			if s != d {
@@ -1709,18 +1745,43 @@ func (p *arm64) zeroExtendEqNe(bits int, op operand.Op, scratch string) string {
 	return scratch
 }
 
+// forcesREX reports whether an operand can only be encoded with a REX prefix.
+// That is true of the extended registers R8-R15, of the byte registers
+// SPL/BPL/SIL/DIL (whose encodings are the AH/CH/DH/BH slots, reachable only by
+// adding REX), and of a memory operand whose base or index is such a register.
+func forcesREX(op operand.Op) bool {
+	switch o := op.(type) {
+	case operand.Mem:
+		return forcesREX(o.Base) || (o.Index != nil && forcesREX(o.Index))
+	case reg.Physical:
+		if o.PhysicalIndex() >= 8 {
+			return true
+		}
+		// The high-byte registers occupy indices 0-3 (AH, CH, DH, BH), so a byte
+		// register at index 4 or above is SPL/BPL/SIL/DIL -- names that exist
+		// only under REX, since without it those encodings mean the high bytes.
+		return o.Size() == 1 && o.PhysicalIndex() >= 4
+	}
+	return false
+}
+
 // checkHighByteEncodable panics when high is a high-byte register (AH/BH/CH/DH)
-// and other is an extended register, a pairing x86-64 cannot encode: the
-// extended register requires a REX prefix, and REX redefines the high-byte
-// operand's slot as SPL.
+// and other forces a REX prefix, a pairing x86-64 cannot express: REX redefines
+// the high-byte operand's slot as SPL.
+//
+// This guard is load-bearing, not a diagnostic. Go's assembler does NOT reject
+// the combination -- it silently encodes the stack-pointer byte instead, so
+// "MOVB AH, (R8)" assembles to 41 88 20 and stores SPL, and "MOVB R8B, AH"
+// overwrites RSP's low byte. Without this check the amd64 side would quietly
+// read or write the wrong register while the arm64 lowering faithfully used AH,
+// which is exactly the divergence this printer exists to prevent.
 func checkHighByteEncodable(high, other operand.Op) {
-	if !isHighByte(high) {
+	if !isHighByte(high) || !forcesREX(other) {
 		return
 	}
-	if ph, ok := other.(reg.Physical); ok && ph.PhysicalIndex() >= 8 {
-		panic(fmt.Sprintf("arm64: a high-byte operand paired with an extended register (index %d) "+
-			"needs a REX prefix on x86-64, which renames the high-byte operand to SPL", ph.PhysicalIndex()))
-	}
+	panic(fmt.Sprintf("arm64: high-byte operand %s paired with %s cannot be encoded on x86-64: "+
+		"the second operand forces a REX prefix, which renames the high-byte operand to SPL",
+		high.Asm(), other.Asm()))
 }
 
 // materializeEqNe zero-extends both operands of a sub-word compare/test into
@@ -1729,13 +1790,12 @@ func checkHighByteEncodable(high, other operand.Op) {
 // would otherwise clobber a value already placed there.
 func (p *arm64) materializeEqNe(bits int, a, b operand.Op) (ra, rb string) {
 	// The same REX trap the byte-extend path guards: a high-byte operand is only
-	// reachable on x86-64 from an encoding with no REX prefix, and an extended
-	// register anywhere in the instruction forces one, which renames the
-	// high-byte operand to SPL. The amd64 assembler rejects the combination, so
-	// today this only decides whether the failure is diagnosed here or much
-	// later -- but the lowering is otherwise happy to emit a compare the amd64
-	// side cannot express, and that asymmetry is exactly what this printer
-	// exists to prevent.
+	// reachable on x86-64 from an encoding with no REX prefix, and anything that
+	// forces one -- an extended register, a byte register in the SPL/BPL/SIL/DIL
+	// group, or a memory operand based on either -- renames the high-byte
+	// operand to SPL. The assembler does not object; it encodes SPL and moves
+	// on, so the amd64 side would compare the stack pointer's low byte while the
+	// arm64 side compared AH.
 	checkHighByteEncodable(a, b)
 	checkHighByteEncodable(b, a)
 	if _, aIsMem := a.(operand.Mem); aIsMem {
@@ -1871,9 +1931,10 @@ func cmovCond(op string) string {
 // instruction is the producer. CMP*/TEST* already emit an unconditional
 // flag-setter and need no mark; a producer whose lowering cannot carry flags
 // (e.g. ORQ/XORQ/shifts) is unsupported and panics rather than let a branch run
-// on stale flags. Reaching a label or the start of the block means the flags
-// cross a control-flow edge, which this printer does not model; such a consumer
-// is left unmarked (matching the previous behaviour).
+// on stale flags. Reaching a label, an unevaluated preprocessor directive, or
+// the start of the function means the flags cross an edge this printer does not
+// model, and all three panic: a consumer left silently unmarked would branch on
+// whatever NZCV happened to survive.
 //
 // A single-instruction lookahead is insufficient because x86 permits
 // flag-transparent instructions (a MOV, an LEA) between a producer and the
@@ -1886,6 +1947,7 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 			strings.HasPrefix(ins.Opcode, "ADC") || isConditionalBranch(ins)) {
 			continue
 		}
+		found := false
 		for k := j - 1; k >= 0; k-- {
 			if cm, isComment := nodes[k].(*ir.Comment); isComment {
 				if hasForeignDirective(cm) {
@@ -1959,7 +2021,17 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 			if mark {
 				setflags[k] = true
 			}
+			found = true
 			break
+		}
+		if !found {
+			// The scan ran off the start of the function without finding a
+			// producer. amd64's entry EFLAGS is undefined too, so a program in
+			// this shape is already broken there -- but it is the one remaining
+			// way to leave a consumer unmarked, and silently emitting a branch on
+			// entry NZCV is not how the other unreachable-producer cases behave.
+			panic(fmt.Sprintf("arm64: %s reads flags with no producer in this function; "+
+				"the flags would come from the caller, which neither architecture defines", ins.Opcode))
 		}
 	}
 	return setflags
@@ -1972,12 +2044,15 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 // flag scans must stop at it rather than read through both arms.
 func hasForeignDirective(c *ir.Comment) bool {
 	for _, line := range c.Lines {
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		switch fields[0] {
-		case "#if", "#ifdef", "#ifndef", "#else", "#elif", "#endif":
+		// Any '#'-leading line, not just a known conditional keyword. Go's
+		// assembler accepts a space after the '#', so "# ifdef FOO" is a live
+		// conditional that a keyword match misses entirely; #include splices in
+		// text that can sit between a producer and its consumer; and a directive
+		// this printer has never heard of is precisely the case to be
+		// conservative about. Being wrong in this direction costs a spurious
+		// generation failure, which is loud and fixable. Being wrong in the
+		// other direction is a silent miscompile.
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			return true
 		}
 	}
@@ -2147,7 +2222,16 @@ func subwordSafeEqNe(nodes []ir.Node) map[int]bool {
 					if cond != "EQ" && cond != "NE" {
 						eqne = false
 					}
-					continue // reads flags without writing them; chained consumers may follow
+					// Chained consumers may follow, so keep scanning. True of
+					// Jcc/SETcc/CMOVcc, which read NZCV and never write it. ADC is
+					// the exception -- on x86 it rewrites all of EFLAGS -- and
+					// treating it as non-writing here would let a later consumer be
+					// attributed to this producer. Two things stop that today: an
+					// ADC consumer forces eqne false (its condition is LO, not
+					// EQ/NE), and any consumer after an ADC panics in the backward
+					// scan because flagSetter rejects ADCB. Both are load-bearing;
+					// give ADC an explicit case here if either changes.
+					continue
 				}
 				if isFlagTransparent(next.Opcode) {
 					// Neither reads nor writes flags (a MOV, an LEA). The backward

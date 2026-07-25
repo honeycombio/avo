@@ -3597,6 +3597,23 @@ TEXT ·XorlMem(SB), NOSPLIT, $0-16
 	MOVW  R16, (R0)
 	RET
 
+// func BzhiConst256(x uint64) uint64
+// Requires: BMI2
+TEXT ·BzhiConst256(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x0000000000000100, R1
+	MOVD $0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BzhiConstNeg(x uint64) uint64
+// Requires: BMI2
+TEXT ·BzhiConstNeg(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $-1, R1
+	MOVD R0, ret+8(FP)
+	RET
+
 // func IncQ(x uint64) uint64
 TEXT ·IncQ(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0

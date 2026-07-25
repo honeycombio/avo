@@ -474,6 +474,9 @@ func TestOpcodeCoverage(t *testing.T) {
 		{"ShrL5", ShrL5, func(x uint64) uint64 { return uint64(uint32(x) >> 5) }},
 		{"SxWQ", SxWQ, func(x uint64) uint64 { return uint64(int64(int16(x))) }},
 		{"BtsQ5", BtsQ5, func(x uint64) uint64 { return x | 1<<5 }},
+		// BZHI's count is ctrl[7:0]: 256 masks to 0 bits, -1 masks to 255.
+		{"BzhiConst256", BzhiConst256, func(x uint64) uint64 { return 0 }},
+		{"BzhiConstNeg", BzhiConstNeg, func(x uint64) uint64 { return x }},
 	}
 	for _, c := range unary {
 		t.Run(c.name, func(t *testing.T) {

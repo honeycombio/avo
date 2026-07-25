@@ -404,6 +404,10 @@ func XorlSign(x uint64, y uint64) uint64
 
 func XorlMem(p *[2]uint32, v uint64)
 
+func BzhiConst256(x uint64) uint64
+
+func BzhiConstNeg(x uint64) uint64
+
 func IncQ(x uint64) uint64
 
 func DecL(x uint64) uint64

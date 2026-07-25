@@ -344,7 +344,41 @@ func TestARM64HighByteEncodability(t *testing.T) {
 		{
 			name:  "extended destination",
 			build: func(ctx *build.Context) { ctx.MOVBLZX(reg.AH, reg.R9L) },
-			want:  "needs a REX prefix",
+			want:  "forces a REX prefix",
+		},
+		// The pairings below all encode on amd64 rather than being rejected --
+		// the assembler silently substitutes SPL -- so each is a case where the
+		// two architectures would otherwise compute different things.
+		{
+			name:  "byte move to extended register",
+			build: func(ctx *build.Context) { ctx.MOVB(reg.AH, reg.R8B) },
+			want:  "forces a REX prefix",
+		},
+		{
+			name:  "byte move from extended register",
+			build: func(ctx *build.Context) { ctx.MOVB(reg.R8B, reg.AH) },
+			want:  "forces a REX prefix",
+		},
+		{
+			name:  "byte move through extended base",
+			build: func(ctx *build.Context) { ctx.MOVB(reg.AH, operand.Mem{Base: reg.R8}) },
+			want:  "forces a REX prefix",
+		},
+		{
+			// SIL is not an extended register, but it exists only under REX:
+			// without the prefix that encoding names AH.
+			name:  "byte add against SIL",
+			build: func(ctx *build.Context) { ctx.ADDB(reg.SIB, reg.AH) },
+			want:  "forces a REX prefix",
+		},
+		{
+			name: "sub-word compare against extended register",
+			build: func(ctx *build.Context) {
+				ctx.CMPB(reg.AH, reg.R8B)
+				ctx.JEQ(operand.LabelRef("hb_yes"))
+				ctx.Label("hb_yes")
+			},
+			want: "forces a REX prefix",
 		},
 	}
 	for _, c := range cases {
@@ -394,4 +428,99 @@ func TestARM64NestedForeignConditional(t *testing.T) {
 	if !strings.Contains(out, "$0x0000000000000002") {
 		t.Errorf("live code after the inner #endif was dropped:\n%s", out)
 	}
+}
+
+// TestARM64ForeignDirectiveResetsCaches checks that the analyses carrying state
+// along a straight line stop at a preprocessor directive this printer does not
+// evaluate, the same way they stop at a label.
+//
+// Both caches record something an earlier instruction established. If that
+// instruction sits inside a conditional arm, the assembler may drop it while the
+// state it left behind survives into unconditional code -- a constant folded
+// from a MOV that was never assembled, or an address reused from an ADD that was
+// never executed.
+func TestARM64ForeignDirectiveResetsCaches(t *testing.T) {
+	t.Run("ConstWindow", func(t *testing.T) {
+		ctx := build.NewContext()
+		ctx.Function("cw")
+		ctx.SignatureExpr("func()")
+		ctx.MOVQ(operand.U64(5), reg.RCX)
+		ctx.Comment("#ifdef FOO")
+		ctx.MOVQ(operand.U64(9), reg.RCX)
+		ctx.Comment("#endif")
+		ctx.SHLXQ(reg.RCX, reg.RAX, reg.RAX)
+		ctx.RET()
+
+		out := printARM64(t, ctx, printer.NewGoRunConfig())
+		// Either folded constant would be wrong: $9 came from inside the arm,
+		// and $5 assumes the arm was not taken. The shift must read the register.
+		if strings.Contains(out, "LSL $9") || strings.Contains(out, "LSL $5") {
+			t.Errorf("constant folded across a preprocessor directive:\n%s", out)
+		}
+	})
+
+	t.Run("AddressCache", func(t *testing.T) {
+		ctx := build.NewContext()
+		ctx.Function("ac")
+		ctx.SignatureExpr("func()")
+		m := operand.Mem{Base: reg.RSI, Index: reg.RDI, Scale: 4, Disp: 8}
+		ctx.Comment("#ifdef FOO")
+		ctx.MOVQ(m, reg.RAX) // seeds the cache inside the arm
+		ctx.Comment("#endif")
+		ctx.MOVQ(m, reg.RBX) // must not reuse it
+		ctx.RET()
+
+		out := printARM64(t, ctx, printer.NewGoRunConfig())
+		// The address is materialized with an ADD; there must be one after the
+		// directive, not just the one inside the arm.
+		if n := strings.Count(out, "ADD "); n < 2 {
+			t.Errorf("address cache survived a preprocessor directive (%d ADDs, want 2):\n%s", n, out)
+		}
+	})
+
+	t.Run("SpacedDirective", func(t *testing.T) {
+		// Go's assembler accepts a space after the '#', so this is a live
+		// conditional that a keyword match would miss.
+		ctx := build.NewContext()
+		ctx.Function("sp")
+		ctx.SignatureExpr("func()")
+		ctx.MOVQ(operand.U64(5), reg.RCX)
+		ctx.Comment("# ifdef FOO")
+		ctx.MOVQ(operand.U64(9), reg.RCX)
+		ctx.Comment("# endif")
+		ctx.SHLXQ(reg.RCX, reg.RAX, reg.RAX)
+		ctx.RET()
+
+		out := printARM64(t, ctx, printer.NewGoRunConfig())
+		if strings.Contains(out, "LSL $9") || strings.Contains(out, "LSL $5") {
+			t.Errorf("constant folded across a spaced preprocessor directive:\n%s", out)
+		}
+	})
+}
+
+// TestARM64NoProducerRejected checks that a flag consumer with no producer
+// anywhere in the function fails generation rather than branching on whatever
+// NZCV the caller happened to leave.
+func TestARM64NoProducerRejected(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("noprod")
+	ctx.SignatureExpr("func()")
+	ctx.JEQ(operand.LabelRef("np_yes"))
+	ctx.Label("np_yes")
+	ctx.RET()
+
+	f, errs := ctx.Result()
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a panic for a consumer with no producer")
+		}
+		if msg, ok := r.(string); !ok || !strings.Contains(msg, "no producer") {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
 }

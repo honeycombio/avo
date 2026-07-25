@@ -923,6 +923,22 @@ func main() {
 		RET()
 	}
 
+	// BzhiConst256/BzhiConstNeg: x86 reads BZHI's bit count from the low 8 bits
+	// of the control operand and ignores the rest, so the whole constant is the
+	// wrong thing to classify. $256 means zero bits (clear), not "64 or more"
+	// (copy); $-1 means 255 (copy), not a negative count (clear). Both get the
+	// answer exactly backwards on every nonzero input.
+	un("BzhiConst256", func(x, d reg.GPVirtual) {
+		n := GP64()
+		MOVQ(operand.U64(256), n)
+		BZHIQ(n, x, d)
+	})
+	un("BzhiConstNeg", func(x, d reg.GPVirtual) {
+		n := GP64()
+		MOVQ(operand.I32(-1), n)
+		BZHIQ(n, x, d)
+	})
+
 	// ---- filling out the dispatch table ----
 	//
 	// Everything below exists because TestOpcodeDispatchIsCovered found it
