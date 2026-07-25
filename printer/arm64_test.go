@@ -597,3 +597,121 @@ func TestARM64DirectiveNodeIntegrity(t *testing.T) {
 		}
 	})
 }
+
+// TestARM64SpacedDirectivesResolved covers directives written with a space
+// after the '#'. Go's assembler tokenizes the '#' separately, so "# else" is a
+// live directive; an exact-string match misses it, and missing an #else means
+// the evaluator never toggles the arm, so BOTH arms get dropped.
+func TestARM64SpacedDirectivesResolved(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("spaced")
+	ctx.SignatureExpr("func()")
+	ctx.Comment("# ifdef GOAMD64_v3")
+	ctx.ADDQ(operand.U32(10), reg.RAX) // amd64-only arm
+	ctx.Comment("# else")
+	ctx.ADDQ(operand.U32(10), reg.RCX) // the arm arm64 must take
+	ctx.Comment("# endif")
+	ctx.RET()
+
+	out := printARM64(t, ctx, printer.NewGoRunConfig())
+	if !strings.Contains(out, "ADD $0x0000000a, R1, R1") {
+		t.Errorf("spaced #else was not resolved; the live arm is missing:\n%s", out)
+	}
+	if strings.Contains(out, "R0, R0") {
+		t.Errorf("spaced #ifdef was not resolved; the dead arm survived:\n%s", out)
+	}
+}
+
+// TestARM64ForeignElseMixedComment covers ownership being a property of the
+// preprocessor stack rather than of the text. A comment can carry an #else
+// belonging to a FOREIGN conditional alongside a directive this printer owns;
+// dropping the node whole then moves code inside an arm it was never in, with
+// balanced directives on both sides so no assembler ever complains.
+func TestARM64ForeignElseMixedComment(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("foreignelse")
+	ctx.SignatureExpr("func()")
+	ctx.Comment("#ifdef MYFLAG")
+	ctx.ADDQ(operand.U32(1), reg.RAX)
+	ctx.Comment("#else", "#ifdef GOAMD64_v4") // the #else is MYFLAG's, not ours
+	ctx.ADDQ(operand.U32(50), reg.RAX)
+	ctx.Comment("#endif")
+	ctx.ADDQ(operand.U32(10), reg.RAX)
+	ctx.Comment("#endif")
+	ctx.RET()
+
+	f, errs := ctx.Result()
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a panic for a comment mixing an owned directive with a foreign #else")
+		}
+		if msg, ok := r.(string); !ok || !strings.Contains(msg, "one directive per comment") {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+}
+
+// TestARM64DoubleShiftRejected checks the three-operand SHL/SHR forms, which
+// Go's assembler encodes as the double-precision shifts SHLD/SHRD -- a
+// different instruction, whose destination is the third operand.
+func TestARM64DoubleShiftRejected(t *testing.T) {
+	for _, op := range []string{"SHLQ", "SHRQ", "SHLL", "SHRL"} {
+		t.Run(op, func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("dbl")
+			ctx.SignatureExpr("func()")
+			switch op {
+			case "SHLQ":
+				ctx.SHLQ(operand.U8(8), reg.RDX, reg.RAX)
+			case "SHRQ":
+				ctx.SHRQ(operand.U8(8), reg.RDX, reg.RAX)
+			case "SHLL":
+				ctx.SHLL(operand.U8(8), reg.EDX, reg.EAX)
+			case "SHRL":
+				ctx.SHRL(operand.U8(8), reg.EDX, reg.EAX)
+			}
+			ctx.RET()
+
+			f, errs := ctx.Result()
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected a panic for three-operand %s", op)
+				}
+				if msg, ok := r.(string); !ok || !strings.Contains(msg, "double-precision shift") {
+					t.Fatalf("unexpected panic: %v", r)
+				}
+			}()
+			_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+		})
+	}
+}
+
+// TestARM64PseudoSPLocalsOffset checks that avo's frame-relative locals land
+// above the saved link register. x86 puts local 0 at SP+0 because CALL has
+// already pushed the return address above the frame; arm64 spills the link
+// register to the bottom of the frame, so locals start at 8(RSP).
+func TestARM64PseudoSPLocalsOffset(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("locals")
+	ctx.SignatureExpr("func()")
+	ctx.MOVQ(reg.RAX, operand.Mem{Base: reg.StackPointer})          // avo local 0
+	ctx.MOVQ(operand.Mem{Base: reg.StackPointer, Disp: 8}, reg.RCX) // avo local 8
+	ctx.RET()
+
+	out := printARM64(t, ctx, printer.NewGoRunConfig())
+	if strings.Contains(out, ", (RSP)") || strings.Contains(out, "(RSP), ") && strings.Contains(out, " (RSP)") {
+		t.Errorf("a local was emitted at 0(RSP), which is the saved link register:\n%s", out)
+	}
+	if !strings.Contains(out, "8(RSP)") || !strings.Contains(out, "16(RSP)") {
+		t.Errorf("expected locals shifted to 8(RSP) and 16(RSP):\n%s", out)
+	}
+}

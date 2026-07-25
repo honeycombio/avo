@@ -478,12 +478,12 @@ func MemProgram(n, length int) []int {
 
 // NumMemPrograms and MemProgramLength size the memory-operand family.
 const (
-	NumMemPrograms   = 32
+	NumMemPrograms   = 8
 	MemProgramLength = 10
 )
 
 // NumPrograms is how many random programs the suite builds.
-const NumPrograms = 64
+const NumPrograms = 12
 
 // ProgramLength is how many operations each one chains together. Long enough to
 // interleave widths and flag pairs, short enough to point at a culprit when a

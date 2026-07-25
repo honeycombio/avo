@@ -369,16 +369,17 @@ func (c *goamd64Cond) active() bool {
 // consume interprets a comment's lines as preprocessor directives, reporting
 // whether they belong to this evaluator (and so should not be printed).
 func (c *goamd64Cond) consume(lines []string) bool {
-	handled := false
+	handled, foreign := false, ""
 	for _, line := range lines {
-		d := strings.TrimSpace(line)
+		d := normalizeDirective(line)
 		if !strings.HasPrefix(d, "#") {
 			continue
 		}
 		fields := strings.Fields(d)
+		owned := false
 		switch fields[0] {
 		case "#ifdef", "#ifndef":
-			owned := len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_")
+			owned = len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_")
 			// Undefined on arm64: #ifdef selects the else arm, #ifndef the then arm.
 			c.stack = append(c.stack, ppFrame{owned: owned, live: !owned || fields[0] == "#ifndef"})
 			handled = handled || owned
@@ -387,18 +388,43 @@ func (c *goamd64Cond) consume(lines []string) bool {
 		case "#else":
 			if n := len(c.stack); n > 0 && c.stack[n-1].owned {
 				c.stack[n-1].live = !c.stack[n-1].live
-				handled = true
+				owned, handled = true, true
 			}
 		case "#endif":
 			// Always closes the innermost conditional, whoever owns it.
 			if n := len(c.stack); n > 0 {
-				owned := c.stack[n-1].owned
+				owned = c.stack[n-1].owned
 				c.stack = c.stack[:n-1]
 				handled = handled || owned
 			}
 		}
+		if !owned && foreign == "" {
+			foreign = d
+		}
+	}
+	// A comment carrying a directive this evaluator owns is dropped whole, so
+	// anything else sharing the node disappears with it -- and a foreign
+	// directive would survive into the amd64 output while vanishing here. Only
+	// this function can tell the two apart: ownership of #else and #endif
+	// depends on which frame is innermost, so it is a property of the stack, not
+	// of the text.
+	if handled && foreign != "" {
+		panic(fmt.Sprintf("arm64: comment mixes a GOAMD64 directive with %q; "+
+			"emit one directive per comment so both architectures see the same text", foreign))
 	}
 	return handled
+}
+
+// normalizeDirective canonicalizes a preprocessor line for matching. Go's
+// assembler tokenizes the '#' separately, so "# ifdef FOO" is a live directive
+// that an exact-string match would miss entirely -- and missing one means both
+// arms of a conditional get resolved as though it were not there.
+func normalizeDirective(line string) string {
+	d := strings.TrimSpace(line)
+	if !strings.HasPrefix(d, "#") {
+		return d
+	}
+	return "#" + strings.TrimSpace(d[1:])
 }
 
 // liveNodes resolves the GOAMD64 conditionals up front, returning only the nodes
@@ -414,18 +440,8 @@ func liveNodes(nodes []ir.Node) []ir.Node {
 	out := make([]ir.Node, 0, len(nodes))
 	for _, n := range nodes {
 		if c, ok := n.(*ir.Comment); ok && pp.consume(c.Lines) {
-			// A comment carrying a GOAMD64 directive this evaluator owns is
-			// dropped whole, so anything else sharing the node disappears with
-			// it. For a plain prose line that is harmless, but a second
-			// directive would survive into the amd64 output and vanish from the
-			// arm64 one -- an "#include" assembled into one binary and not the
-			// other. Refuse rather than silently drop it.
-			for _, line := range c.Lines {
-				if d := strings.TrimSpace(line); strings.HasPrefix(d, "#") && !isGOAMD64Directive(d) {
-					panic(fmt.Sprintf("arm64: comment mixes a GOAMD64 directive with %q; "+
-						"emit one directive per comment so the two architectures see the same text", d))
-				}
-			}
+			// consume validates that the node carries nothing else that would
+			// vanish along with it.
 			continue
 		}
 		if !pp.active() {
@@ -444,23 +460,6 @@ func liveNodes(nodes []ir.Node) []ir.Node {
 		}
 	}
 	return out
-}
-
-// isGOAMD64Directive reports whether a preprocessor line is one goamd64Cond
-// evaluates, i.e. a conditional keyed on a GOAMD64_* symbol or the #else/#endif
-// that pairs with one.
-func isGOAMD64Directive(d string) bool {
-	fields := strings.Fields(d)
-	if len(fields) == 0 {
-		return false
-	}
-	switch fields[0] {
-	case "#else", "#endif":
-		return true
-	case "#ifdef", "#ifndef":
-		return len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_")
-	}
-	return false
 }
 
 // zeroSelf lowers x86's "XOR r, r" zeroing idiom. The register is cleared with
@@ -714,9 +713,33 @@ func log2scale(s uint8) int {
 // emitting an ADD into scratchAddr first for indexed operands.
 func (p *arm64) memAsm(m operand.Mem) string { return p.memAsmW(m, 0) }
 
+// pseudoSPLocalOffset is where a function's locals begin, relative to the arm64
+// hardware stack pointer.
+//
+// The two architectures store the return address in different places. x86's
+// CALL pushes it before the callee runs, so it sits above the frame and local 0
+// is at SP+0. arm64's BL leaves it in the link register and the callee spills it
+// to the BOTTOM of its own frame, so 0(RSP) is the saved link register and
+// locals begin at 8(RSP). avo's AllocLocal hands out x86-relative
+// displacements, so they need shifting.
+const pseudoSPLocalOffset = 8
+
+// frameAdjust rewrites a pseudo-SP-based memory operand for arm64's frame
+// layout. Without it every local lands 8 bytes low and local 0 lands on the
+// saved link register. Nothing computes a wrong value -- all locals shift
+// uniformly, so loads and stores still agree -- but any stack unwind (GC
+// scanning, panic, profiling) then reads a local as the return address.
+func frameAdjust(m operand.Mem) operand.Mem {
+	if m.Base != nil && m.Base.Asm() == "SP" {
+		m.Disp += pseudoSPLocalOffset
+	}
+	return m
+}
+
 // memAsmW renders a memory operand for a scalar access of the given width in
 // bytes (0 when the caller cannot use arm64's folded base+index form).
 func (p *arm64) memAsmW(m operand.Mem, width int) string {
+	m = frameAdjust(m)
 	if m.Symbol.Name != "" {
 		s := m.Symbol.String() + fmt.Sprintf("%+d", m.Disp)
 		if m.Base != nil {
@@ -777,6 +800,7 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 // memAddr materializes the effective address of m into a GP register and returns
 // its name (for instructions like VLD1/VST1 that take only a base register).
 func (p *arm64) memAddr(m operand.Mem) string {
+	m = frameAdjust(m)
 	if m.Symbol.Name != "" {
 		panic("arm64: address-of symbol operand not supported")
 	}
@@ -973,14 +997,18 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	case "NOTL":
 		p.emit("MVNW %s, %s", operandReg(ops[0]), operandReg(ops[0]))
 	case "SHRQ":
+		checkNotDoubleShift(i)
 		p.lowerShift("LSR", ops[0], ops[1])
 	case "SHLQ":
+		checkNotDoubleShift(i)
 		p.lowerShift("LSL", ops[0], ops[1])
 	case "SARQ":
 		p.lowerShift("ASR", ops[0], ops[1])
 	case "SHRL":
+		checkNotDoubleShift(i)
 		p.lowerShift("LSRW", ops[0], ops[1])
 	case "SHLL":
+		checkNotDoubleShift(i)
 		p.lowerShift("LSLW", ops[0], ops[1])
 	case "SARL":
 		p.lowerShift("ASRW", ops[0], ops[1])
@@ -1503,6 +1531,22 @@ func (p *arm64) lowerIncDec(op, sop string, dst operand.Op, width int, flags boo
 	p.emit("%s $1, %s, %s", mnem, d, d)
 }
 
+// checkNotDoubleShift rejects the three-operand form of SHL/SHR, which is a
+// different x86 instruction than its two-operand namesake.
+//
+// "SHLQ $8, DX, AX" does not shift AX by 8: Go's assembler encodes it as SHLDQ,
+// the double-precision shift, which fills AX's vacated bits from DX. The
+// two-operand lowering would read the wrong operand as its destination and
+// shift the fill register in place, leaving the real destination untouched --
+// plausible-looking assembly that computes something else entirely. SARx, ROLx
+// and RORx have no three-operand form, so only these four need the guard.
+func checkNotDoubleShift(i *ir.Instruction) {
+	if len(i.Operands) > 2 {
+		panic(fmt.Sprintf("arm64: %s with %d operands is a double-precision shift (x86 %sD), which this lowering does not implement",
+			i.Opcode, len(i.Operands), strings.TrimSuffix(i.Opcode, i.Opcode[len(i.Opcode)-1:])))
+	}
+}
+
 // lowerShift lowers "SHIFT count, dst" (count imm or register).
 func (p *arm64) lowerShift(op string, count, dst operand.Op) {
 	d := operandReg(dst)
@@ -1715,6 +1759,7 @@ func (p *arm64) lowerWideMul(hiOp string, src operand.Op) {
 }
 
 func (p *arm64) lowerLEA(m operand.Mem, dst string) {
+	m = frameAdjust(m)
 	if m.Symbol.Name != "" {
 		panic("arm64: LEA of symbol not supported")
 	}
