@@ -288,6 +288,11 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
+			// The only other text from the IR that reaches the file verbatim.
+			// Not exploitable today -- a payload label emits a trailing colon
+			// that both assemblers reject -- but it is the same shape as the
+			// comment injection, and the check costs nothing.
+			checkSingleLine("label", string(n))
 			p.constOK = false
 			p.flush()
 			p.ensureclear()
@@ -331,6 +336,19 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 		}
 	}
 	p.flush()
+}
+
+// checkSingleLine refuses text that would span more than one output line.
+//
+// Everything downstream assumes one emitted item becomes one line: the
+// alignment pass, and every analysis that reasons about instruction positions.
+// A newline reaching the file is also how text becomes live code -- see
+// checkNoDirective, where a comment carrying one injected an instruction into
+// both outputs.
+func checkSingleLine(what, text string) {
+	if strings.ContainsAny(text, "\n\r") {
+		panic(fmt.Sprintf("arm64: %s %q spans more than one line", what, text))
+	}
 }
 
 // checkNoDirective refuses a preprocessor directive in the instruction stream.
@@ -398,9 +416,7 @@ func (p *arm64) emit(format string, args ...interface{}) {
 	// a newline reaching the file un-prefixed is how text becomes live code.
 	// Asserting it here closes the class rather than each site that could
 	// reintroduce it.
-	if strings.ContainsAny(line, "\n\r") {
-		panic(fmt.Sprintf("arm64: emitted text %q spans more than one line", line))
-	}
+	checkSingleLine("emitted text", line)
 	op, operands := line, ""
 	if i := strings.IndexByte(line, ' '); i >= 0 {
 		op, operands = line[:i], line[i+1:]
