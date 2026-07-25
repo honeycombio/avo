@@ -59,6 +59,11 @@ type arm64 struct {
 	pending [][2]string
 	clear   bool
 
+	// Set while lowering an instruction isFlagTransparent claims leaves NZCV
+	// alone, so emit() can hold the lowering to that claim.
+	inTransparent bool
+	transparentOp string
+
 	// One-instruction constant-tracking window: constReg holds constVal when
 	// constOK and the immediately preceding instruction was "MOVQ/MOVL $imm,
 	// constReg". Any other instruction or a label invalidates it (comments are
@@ -223,6 +228,7 @@ func (p *arm64) header(f *ir.File) {
 	if len(f.Includes) > 0 {
 		p.NL()
 		for _, path := range f.Includes {
+			checkSingleLine("include path", path)
 			p.Printf("#include \"%s\"\n", path)
 		}
 	}
@@ -274,6 +280,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	if len(f.ISA) > 0 && !isBMI2 {
 		p.Comment("Requires: " + strings.Join(f.ISA, ", "))
 	}
+	checkSingleLine("function name", name)
 	p.Printf("TEXT %s%s(SB)", dot, name)
 	if f.Attributes != 0 {
 		p.Printf(", %s", f.Attributes.Asm())
@@ -305,6 +312,16 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 				p.Printf("\t// %s\n", line)
 			}
 		case *ir.Instruction:
+			if len(n.Suffixes) != 0 {
+				// The dispatch keys on the opcode alone, so a suffix's meaning
+				// (zeroing, broadcast, rounding) would simply be discarded. Only
+				// EVEX forms carry them and all of those are unsupported anyway,
+				// but that is an argument about avo's instruction database, not
+				// something this file enforces.
+				panic(fmt.Sprintf("arm64: %s carries suffixes %v, which this lowering ignores",
+					n.Opcode, n.Suffixes))
+			}
+			p.inTransparent, p.transparentOp = isFlagTransparent(n.Opcode), n.Opcode
 			switch {
 			case n.Opcode == "JMP":
 				// Only a label target is translatable. A register or memory
@@ -323,10 +340,19 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 			case strings.HasPrefix(n.Opcode, "SET"):
 				p.lowerSET(n)
 			case isConditionalBranch(n):
+				// Same reasoning as JMP: a relative target is a byte offset, and
+				// a byte offset cannot mean the same thing on two instruction
+				// sets. Both assemblers happen to reject the rendering, but that
+				// is not something to depend on.
+				if _, ok := n.Operands[0].(operand.LabelRef); !ok {
+					panic(fmt.Sprintf("arm64: %s to a non-label target (%s) is not supported",
+						n.Opcode, n.Operands[0].Asm()))
+				}
 				p.emit("%s %s", branchMnemonic(n.Opcode), n.Operands[0].Asm())
 			default:
 				p.lower(n, setflags[idx], subwordSafe[idx])
 			}
+			p.inTransparent, p.transparentOp = false, ""
 			p.trackConst(n)
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
@@ -336,6 +362,55 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 		}
 	}
 	p.flush()
+}
+
+// arm64WritesNZCV classifies every mnemonic this printer can emit as to whether
+// it writes the condition flags. emit() panics on a mnemonic missing from this
+// table, so it cannot silently fall behind the lowerings.
+//
+// It exists to make one hand-maintained property mechanical. isFlagTransparent
+// classifies by x86 OPCODE, but the property actually relied on is that the
+// EMITTED arm64 sequence leaves NZCV alone -- including the instructions a
+// lowering emits incidentally, like the scratch-address ADD behind an indexed
+// operand. Those two were kept in sync by inspection, and the XORL bug (a
+// 64-bit TST synthesized where a 32-bit one was needed) is what that costs.
+//
+// This checks only the arm64 half. The x86 half -- that the opcode really is
+// flag-neutral on x86, or the backward scan attributes the wrong producer --
+// cannot be checked from here, so isFlagTransparent's list is the thing to
+// review against the Intel manual when adding to it.
+var arm64WritesNZCV = map[string]bool{
+	// Flag setters, emitted only from producer-classified lowerings.
+	"ADDS": true, "ADDSW": true, "SUBS": true, "SUBSW": true,
+	"ANDS": true, "ANDSW": true,
+	"CMP": true, "CMPW": true, "CMN": true, "CMNW": true,
+	"TST": true, "TSTW": true,
+
+	// Data movement and arithmetic: no flag effects.
+	"ADD": false, "ADDW": false, "SUB": false, "SUBW": false,
+	"AND": false, "ANDW": false, "ORR": false, "ORRW": false,
+	"EOR": false, "EORW": false,
+	"MUL": false, "MULW": false, "UMULH": false, "SMULH": false,
+	"LSL": false, "LSLW": false, "LSR": false, "LSRW": false,
+	"ASR": false, "ASRW": false, "ROR": false, "RORW": false,
+	"MVN": false, "MVNW": false, "NEG": false, "NEGW": false,
+	"BIC":  false, // BICS is the flag-setting form; this is not it
+	"MOVD": false, "MOVW": false, "MOVWU": false, "MOVH": false,
+	"MOVHU": false, "MOVB": false, "MOVBU": false,
+	"FMOVD": false, "FMOVQ": false, "VMOV": false, "VEOR": false,
+	"VCNT": false, "VUADDLV": false,
+	"BFI": false, "UBFX": false, "SBFX": false,
+	"RBIT": false, "CLZ": false, "REVW": false,
+
+	// Conditional select/set read the flags and never write them.
+	"CSEL": false, "CSELW": false, "CSET": false, "CSINC": false,
+
+	// Control flow. The conditional branches read NZCV; none writes it.
+	"RET": false, "JMP": false,
+	"BEQ": false, "BNE": false, "BLT": false, "BLE": false,
+	"BGT": false, "BGE": false, "BLO": false, "BHS": false,
+	"BHI": false, "BLS": false, "BMI": false, "BPL": false,
+	"BVS": false, "BVC": false,
 }
 
 // checkSingleLine refuses text that would span more than one output line.
@@ -420,6 +495,15 @@ func (p *arm64) emit(format string, args ...interface{}) {
 	op, operands := line, ""
 	if i := strings.IndexByte(line, ' '); i >= 0 {
 		op, operands = line[:i], line[i+1:]
+	}
+	writes, known := arm64WritesNZCV[op]
+	if !known {
+		panic(fmt.Sprintf("arm64: emitted %q is not classified in arm64WritesNZCV; "+
+			"add it, deciding whether it writes the condition flags", op))
+	}
+	if writes && p.inTransparent {
+		panic(fmt.Sprintf("arm64: lowering %s emitted %s, which writes the condition flags, "+
+			"but isFlagTransparent classifies it as leaving them alone", p.transparentOp, op))
 	}
 	p.pending = append(p.pending, [2]string{op, operands})
 	p.clear = false

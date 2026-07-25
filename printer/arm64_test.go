@@ -625,3 +625,51 @@ func TestARM64BuildConstraintParenthesized(t *testing.T) {
 		t.Errorf("build constraint is not parenthesized:\n%s", out)
 	}
 }
+
+// TestARM64TransparencyIsEnforced checks that a lowering claimed to leave the
+// condition flags alone actually does.
+//
+// isFlagTransparent classifies by x86 opcode, but the property the flag scans
+// rely on is that the EMITTED arm64 sequence is NZCV-neutral — including
+// instructions a lowering emits incidentally, like the scratch-address ADD
+// behind an indexed operand. Those two were kept in sync by hand, and the cost
+// of that was a 64-bit TST synthesized where a 32-bit one was needed.
+//
+// The check lives in emit(); this test drives a producer/consumer pair through
+// it so the enforcement itself is covered.
+func TestARM64TransparencyIsEnforced(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("tr")
+	ctx.SignatureExpr("func()")
+	ctx.CMPQ(reg.RAX, reg.RCX)
+	ctx.MOVQ(reg.RAX, reg.RDX)                                              // transparent, sits between producer and consumer
+	ctx.MOVQ(operand.Mem{Base: reg.RSI, Index: reg.RDI, Scale: 4}, reg.RBX) // emits a scratch ADD
+	ctx.JEQ(operand.LabelRef("tr_yes"))
+	ctx.Label("tr_yes")
+	ctx.RET()
+
+	out := printARM64(t, ctx, printer.NewGoRunConfig())
+	if !strings.Contains(out, "BEQ") {
+		t.Errorf("expected the branch to survive:\n%s", out)
+	}
+}
+
+// TestARM64UnknownMnemonicRejected checks the classification table cannot rot:
+// emitting a mnemonic it does not list is a generation-time failure, so adding
+// a lowering forces a conscious decision about whether it writes flags.
+func TestARM64UnknownMnemonicRejected(t *testing.T) {
+	if _, ok := printer.ARM64WritesNZCVForTest("MOVD"); !ok {
+		t.Fatal("expected MOVD to be classified")
+	}
+	if _, ok := printer.ARM64WritesNZCVForTest("NOTAREALMNEMONIC"); ok {
+		t.Error("an unlisted mnemonic must not be reported as classified")
+	}
+	// Every mnemonic the printer can emit should be listed; spot-check the
+	// flag setters, which are the ones that matter for transparency.
+	for _, m := range []string{"ADDS", "SUBSW", "ANDS", "CMP", "CMNW", "TSTW"} {
+		writes, ok := printer.ARM64WritesNZCVForTest(m)
+		if !ok || !writes {
+			t.Errorf("%s should be classified as writing NZCV (listed=%v, writes=%v)", m, ok, writes)
+		}
+	}
+}
