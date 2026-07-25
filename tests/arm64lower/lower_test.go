@@ -593,3 +593,47 @@ func TestRandomPrograms(t *testing.T) {
 		})
 	}
 }
+
+// TestReviewRegressions covers lowering bugs found by review: a high-byte source
+// read as the low byte, a 32-bit conditional move that skipped x86's
+// unconditional zero-extension, and BEXTR clobbering its own staged control
+// field with a memory operand's address.
+func TestReviewRegressions(t *testing.T) {
+	xs := []uint64{0, 1, 0xff, 0x1234, 0xdeadbeefcafef00d, ^uint64(0), 1 << 63, 0xffffffff00000000}
+
+	t.Run("MovbzxHigh", func(t *testing.T) {
+		for _, x := range xs {
+			if got, want := MovbzxHigh(x), (x>>8)&0xff; got != want {
+				t.Errorf("MovbzxHigh(%#x) = %#x, want %#x", x, got, want)
+			}
+		}
+	})
+
+	t.Run("CmovL32", func(t *testing.T) {
+		for _, x := range xs {
+			for _, y := range xs {
+				// Condition is false, but a 32-bit CMOV still writes and
+				// zero-extends its destination.
+				if got, want := CmovL32(x, y), uint64(uint32(y)); got != want {
+					t.Errorf("CmovL32(%#x, %#x) = %#x, want %#x", x, y, got, want)
+				}
+			}
+		}
+	})
+
+	t.Run("BextrMem", func(t *testing.T) {
+		buf := [4]uint64{0x0123456789abcdef, ^uint64(0), 0, 0xf0f0f0f0f0f0f0f0}
+		for i := uint64(0); i < 4; i++ {
+			for _, ctrl := range []uint64{8 | 8<<8, 0 | 16<<8, 4 | 12<<8, 32 | 8<<8} {
+				start, length := ctrl&0xff, (ctrl>>8)&0xff
+				want := buf[i] >> start
+				if length < 64 {
+					want &= (1 << length) - 1
+				}
+				if got := BextrMem(&buf, i, ctrl); got != want {
+					t.Errorf("BextrMem(buf[%d]=%#x, ctrl=%#x) = %#x, want %#x", i, buf[i], ctrl, got, want)
+				}
+			}
+		}
+	})
+}

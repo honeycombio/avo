@@ -2431,3 +2431,39 @@ TEXT ·Prop63(SB), NOSPLIT, $0-24
 	EOR   R1, R0, R0
 	MOVD  R0, ret+16(FP)
 	RET
+
+// func MovbzxHigh(x uint64) uint64
+TEXT ·MovbzxHigh(SB), NOSPLIT, $0-16
+	MOVD  x+0(FP), R0
+	UBFX  $8, R0, $8, R0
+	MOVWU R0, R0
+	MOVD  R0, ret+8(FP)
+	RET
+
+// func CmovL32(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·CmovL32(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	CMP   R0, R0
+	CSELW NE, R0, R1, R1
+	MOVD  R1, ret+16(FP)
+	RET
+
+// func BextrMem(p *[4]uint64, i uint64, ctrl uint64) uint64
+// Requires: BMI
+TEXT ·BextrMem(SB), NOSPLIT, $0-32
+	MOVD p+0(FP), R0
+	MOVD i+8(FP), R1
+	MOVD ctrl+16(FP), R2
+	ADD  R1<<3, R0, R15
+	MOVD (R15), R16
+	UBFX $0, R2, $8, R15
+	LSR  R15, R16, R16
+	UBFX $8, R2, $8, R15
+	MOVD $1, R0
+	LSL  R15, R0, R0
+	SUB  $1, R0, R0
+	AND  R0, R16, R0
+	MOVD R0, ret+24(FP)
+	RET

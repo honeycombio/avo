@@ -682,5 +682,51 @@ func main() {
 		RET()
 	}
 
+	// ---- regression cases for lowering bugs found in review ----
+
+	// MovbzxHigh: a byte-extend from a high-byte source must read bits 15:8. AH
+	// renames to the same arm64 register as AL, so a plain byte load silently
+	// reads 7:0 instead. The 32-bit destination form is used deliberately: with a
+	// 64-bit destination x86-64 needs a REX prefix, and REX redefines that
+	// register slot as SPL, so AH is unreachable there.
+	TEXT("MovbzxHigh", NOSPLIT, "func(x uint64) uint64")
+	{
+		x := reg.RAX // high-byte access requires AX-DX
+		Load(Param("x"), x)
+		d := GP64()
+		MOVBLZX(x.As8H(), d.As32())
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
+	// CmovL32: a 32-bit CMOV writes its destination on BOTH condition outcomes,
+	// zero-extending it. Here the condition is false, so a 64-bit CSEL would
+	// leave the destination's upper half intact where x86 clears it.
+	TEXT("CmovL32", NOSPLIT, "func(x, y uint64) uint64")
+	{
+		x, y, d := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("y"), y)
+		MOVQ(y, d)
+		CMPQ(x, x)                  // equal, so NE is false
+		CMOVLNE(x.As32(), d.As32()) // no move, but x86 still zero-extends d
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
+	// BextrMem: BEXTR with a runtime control and an indexed memory source. The
+	// control fields and the source address both want a scratch register, and
+	// staging them in the wrong order makes the shift count the address.
+	TEXT("BextrMem", NOSPLIT, "func(p *[4]uint64, i uint64, ctrl uint64) uint64")
+	{
+		ptr, i, ctrl, d := GP64(), GP64(), GP64(), GP64()
+		Load(Param("p"), ptr)
+		Load(Param("i"), i)
+		Load(Param("ctrl"), ctrl)
+		BEXTRQ(ctrl, operand.Mem{Base: ptr, Index: i, Scale: 8}, d)
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
 	Generate()
 }

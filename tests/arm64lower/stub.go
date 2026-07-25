@@ -309,3 +309,9 @@ func Prop61(x uint64, y uint64) uint64
 func Prop62(x uint64, y uint64) uint64
 
 func Prop63(x uint64, y uint64) uint64
+
+func MovbzxHigh(x uint64) uint64
+
+func CmovL32(x uint64, y uint64) uint64
+
+func BextrMem(p *[4]uint64, i uint64, ctrl uint64) uint64

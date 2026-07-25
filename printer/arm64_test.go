@@ -211,3 +211,88 @@ func TestARM64GOAMD64ConditionalsEvaluated(t *testing.T) {
 		t.Errorf("then arm (TZCNTQ -> R1) should have been skipped:\n%s", out)
 	}
 }
+
+// TestARM64FlagSemanticGuards covers sequences the lowering must refuse rather
+// than miscompile. Each pairs a flag producer with a consumer whose condition
+// the arm64 translation cannot faithfully reproduce, because the two
+// architectures disagree about what the flag means after that producer.
+func TestARM64FlagSemanticGuards(t *testing.T) {
+	cases := []struct {
+		name  string
+		build func(ctx *build.Context)
+		want  string
+	}{
+		{
+			// x86 TEST forces CF=0 and so does arm64 TST, meaning the raw bits
+			// agree; the meaning-inverting condition map (correct after a
+			// compare) then flips the answer. JA is never taken after this TEST
+			// on x86, but BHI would always be taken.
+			name: "carry condition after TEST",
+			build: func(ctx *build.Context) {
+				ctx.TESTQ(reg.RAX, reg.RCX)
+				ctx.JHI(operand.LabelRef("l"))
+			},
+			want: "only the ZF/SF conditions",
+		},
+		{
+			// x86 INC leaves CF alone, so this reads the compare's borrow. The
+			// arm64 ADDS it lowers to overwrites C with the increment's carry.
+			name: "carry condition across INC",
+			build: func(ctx *build.Context) {
+				ctx.CMPQ(reg.RAX, reg.RCX)
+				ctx.INCQ(reg.RDX)
+				ctx.JCS(operand.LabelRef("l"))
+			},
+			want: "preserves CF on x86",
+		},
+		{
+			// ADC's lowering hardcodes the borrow convention, which only holds
+			// after a compare or subtract. After an addition both architectures
+			// use the same carry-out sense, so it would increment inversely.
+			name: "ADC after an addition",
+			build: func(ctx *build.Context) {
+				ctx.ADDQ(reg.RAX, reg.RCX)
+				ctx.ADCB(operand.I8(0), reg.DL)
+			},
+			want: "borrow-producing compare or subtract",
+		},
+		{
+			// A signed sub-word compare whose consumer sits past a
+			// flag-transparent MOV. The zero-extending translation is only valid
+			// for EQ/NE, so this must not be silently blessed.
+			name: "signed sub-word compare past a MOV",
+			build: func(ctx *build.Context) {
+				ctx.CMPB(reg.AL, reg.CL)
+				ctx.MOVQ(operand.U64(1), reg.RAX)
+				ctx.JLT(operand.LabelRef("l"))
+			},
+			want: "sub-32-bit compare",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("guard")
+			ctx.SignatureExpr("func()")
+			c.build(ctx)
+			ctx.Label("l")
+			ctx.RET()
+			f, errs := ctx.Result()
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected a panic, got none")
+				}
+				msg, ok := r.(string)
+				if !ok || !strings.Contains(msg, c.want) {
+					t.Fatalf("panic %q does not mention %q", r, c.want)
+				}
+			}()
+			_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+		})
+	}
+}

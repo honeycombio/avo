@@ -673,25 +673,47 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("MOVH %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVWQZX": // load/extend uint16, zero-extend
 		p.emit("MOVHU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
+	case "MOVBQZX", "MOVBQSX", "MOVBLSX", "MOVBLZX":
+		// A high-byte source (AH/BH/CH/DH) names bits 15:8, but it renames to the
+		// same arm64 register as the low byte, so the plain load would silently
+		// read bits 7:0. Extract the right field instead.
+		if isHighByte(ops[0]) {
+			ext := "UBFX"
+			if i.Opcode == "MOVBQSX" || i.Opcode == "MOVBLSX" {
+				ext = "SBFX"
+			}
+			d := operandReg(ops[1])
+			p.emit("%s $8, %s, $8, %s", ext, rename(ops[0].(reg.Register)), d)
+			if i.Opcode == "MOVBLSX" || i.Opcode == "MOVBLZX" {
+				p.emit("MOVWU %s, %s", d, d) // 32-bit destination: clear the top half
+			}
+			return
+		}
+		switch i.Opcode {
+		case "MOVBQZX":
+			p.emit("MOVBU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
+		case "MOVBQSX":
+			p.emit("MOVB %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
+		case "MOVBLZX":
+			d := operandReg(ops[1])
+			p.emit("MOVBU %s, %s", p.srcAsm(ops[0]), d)
+			p.emit("MOVWU %s, %s", d, d)
+		default: // MOVBLSX
+			d := operandReg(ops[1])
+			p.emit("MOVB %s, %s", p.srcAsm(ops[0]), d)
+			p.emit("MOVWU %s, %s", d, d)
+		}
+
 	case "MOVLQSX": // load/extend int32, sign-extend
 		p.emit("MOVW %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVLQZX": // load/extend uint32, zero-extend
 		p.emit("MOVWU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
-	case "MOVBQSX": // load/extend int8, sign-extend
-		p.emit("MOVB %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
-	case "MOVBLSX", "MOVWLSX":
-		// Sign-extend a byte/halfword into a 32-bit destination. x86 leaves the
-		// upper 32 bits of the register zeroed, so extend to 64 and then clear
-		// the top half.
-		ld := "MOVB"
-		if i.Opcode == "MOVWLSX" {
-			ld = "MOVH"
-		}
+	case "MOVWLSX":
+		// Sign-extend a halfword into a 32-bit destination: x86 leaves the upper
+		// 32 bits zeroed, so extend to 64 and then clear the top half.
 		d := operandReg(ops[1])
-		p.emit("%s %s, %s", ld, p.srcAsm(ops[0]), d)
+		p.emit("MOVH %s, %s", p.srcAsm(ops[0]), d)
 		p.emit("MOVWU %s, %s", d, d)
-	case "MOVBQZX": // load/extend uint8, zero-extend
-		p.emit("MOVBU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVUPS", "MOVOU", "MOVOA":
 		// 128-bit SSE moves. arm64 NEON loads/stores have no alignment
 		// requirement, so the aligned (MOVOA) and unaligned (MOVOU) forms lower
@@ -845,7 +867,7 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 
 	case "IMULL":
 		// 32-bit two-operand multiply; the W-form zeroes the upper half as x86 does.
-		p.emit("MULW %s, %s, %s", p.valReg(ops[0]), operandReg(ops[1]), operandReg(ops[1]))
+		p.emit("MULW %s, %s, %s", p.valRegW(ops[0], 4), operandReg(ops[1]), operandReg(ops[1]))
 
 	case "POPCNTQ":
 		// arm64 has no scalar population count: move to a vector register, count
@@ -941,9 +963,9 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	// already clean above that width. Anything else fails loudly rather than
 	// silently comparing full 64-bit registers.
 	case "CMPQ":
-		p.lowerCompare("CMP", "CMN", ops[0], ops[1])
+		p.lowerCompare("CMP", "CMN", ops[0], ops[1], 8)
 	case "CMPL":
-		p.lowerCompare("CMPW", "CMNW", ops[0], ops[1])
+		p.lowerCompare("CMPW", "CMNW", ops[0], ops[1], 4)
 	case "CMPW", "CMPB":
 		if !subwordEqNeSafe {
 			panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit compare needs width- and sign-correct operand extension unless every consumer is EQ/NE)", i.Opcode))
@@ -954,9 +976,9 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		}
 		p.lowerSubwordCompareEqNe(bits, "CMP", ops[0], ops[1])
 	case "TESTQ":
-		p.lowerTest("TST", ops[0], ops[1])
+		p.lowerTest("TST", ops[0], ops[1], 8)
 	case "TESTL":
-		p.lowerTest("TSTW", ops[0], ops[1])
+		p.lowerTest("TSTW", ops[0], ops[1], 4)
 	case "TESTW", "TESTB":
 		if !subwordEqNeSafe {
 			panic(fmt.Sprintf("arm64: %s not supported (sub-32-bit test needs width-correct operands unless every consumer is EQ/NE)", i.Opcode))
@@ -991,9 +1013,24 @@ func (p *arm64) srcAsm(op operand.Op) string {
 // valReg returns a register name holding op's value, loading a memory operand
 // into scratchVal first. op must not be an immediate. x86 permits at most one
 // memory operand per instruction, so callers never contend for scratchVal.
-func (p *arm64) valReg(op operand.Op) string {
+func (p *arm64) valReg(op operand.Op) string { return p.valRegW(op, 8) }
+
+// valRegW is valReg for an access of the given width in bytes. Loading more
+// than the operand's width would read past it, which is harmless for the value
+// on a little-endian machine but can fault when the operand ends at a page
+// boundary -- reachable for a 32-bit compare against the tail of a buffer.
+func (p *arm64) valRegW(op operand.Op, width int) string {
 	if m, ok := op.(operand.Mem); ok {
-		p.emit("MOVD %s, %s", p.memAsm(m), scratchVal)
+		ld := "MOVD"
+		switch width {
+		case 4:
+			ld = "MOVWU"
+		case 2:
+			ld = "MOVHU"
+		case 1:
+			ld = "MOVBU"
+		}
+		p.emit("%s %s, %s", ld, p.memAsmW(m, width), scratchVal)
 		return scratchVal
 	}
 	return operandReg(op)
@@ -1378,14 +1415,24 @@ func (p *arm64) lowerBEXTR(ctrl, src, dst operand.Op) {
 		return
 	}
 	c := operandReg(ctrl)
-	p.emit("UBFX $0, %s, $8, %s", c, scratchVal)  // start = ctrl[7:0]
-	p.emit("UBFX $8, %s, $8, %s", c, scratchAddr) // len   = ctrl[15:8]
-	s := p.srcRegInto(src, d)
-	p.emit("LSR %s, %s, %s", scratchVal, s, d)                    // dst = src >> start
-	p.emit("MOVD $1, %s", scratchVal)                             // start consumed; reuse
-	p.emit("LSL %s, %s, %s", scratchAddr, scratchVal, scratchVal) // 1 << len
-	p.emit("SUB $1, %s, %s", scratchVal, scratchVal)              // (1<<len)-1
-	p.emit("AND %s, %s, %s", scratchVal, d, d)                    // dst &= mask
+	// Staging order matters here. The value is materialized first, because an
+	// indexed memory source computes its address through scratchAddr and would
+	// otherwise destroy a field already staged there. ctrl is then read twice,
+	// and only after its last read is dst written, so ctrl may alias dst; and
+	// only scratchAddr is reused between the two fields, after the first is
+	// consumed. Every operand therefore survives until it is no longer needed.
+	if m, ok := src.(operand.Mem); ok {
+		p.emit("MOVD %s, %s", p.memAsm(m), scratchVal)
+	} else {
+		p.emit("MOVD %s, %s", operandReg(src), scratchVal)
+	}
+	p.emit("UBFX $0, %s, $8, %s", c, scratchAddr)                 // start = ctrl[7:0]
+	p.emit("LSR %s, %s, %s", scratchAddr, scratchVal, scratchVal) // value >>= start
+	p.emit("UBFX $8, %s, $8, %s", c, scratchAddr)                 // len = ctrl[15:8]
+	p.emit("MOVD $1, %s", d)                                      // ctrl is dead; dst free
+	p.emit("LSL %s, %s, %s", scratchAddr, d, d)                   // 1 << len
+	p.emit("SUB $1, %s, %s", d, d)                                // (1<<len)-1
+	p.emit("AND %s, %s, %s", d, scratchVal, d)                    // dst = value & mask
 }
 
 // lowerMULX lowers "MULXQ src, lo, hi" (BMI2, flag-free): the 128-bit product
@@ -1478,9 +1525,9 @@ func (p *arm64) lowerLEA(m operand.Mem, dst string) {
 // using the given compare mnemonic (cmp) and its negated-immediate counterpart
 // (cmn), so callers select the operand width: CMP/CMN for 64-bit, CMPW/CMNW for
 // 32-bit. At most one of a, b is a memory operand (loaded into scratchVal).
-func (p *arm64) lowerCompare(cmp, cmn string, a, b operand.Op) {
+func (p *arm64) lowerCompare(cmp, cmn string, a, b operand.Op, width int) {
 	if imm, ok := immAsm(b); ok {
-		aReg := p.valReg(a)
+		aReg := p.valRegW(a, width)
 		if neg, val := negImm(imm); neg {
 			p.emit("%s $%d, %s", cmn, val, aReg)
 			return
@@ -1490,17 +1537,17 @@ func (p *arm64) lowerCompare(cmp, cmn string, a, b operand.Op) {
 	}
 	// arm64 CMP Rm, Rn computes Rn - Rm; we want a - b, so Rn=a, Rm=b.
 	if _, ok := a.(operand.Mem); ok {
-		aReg := p.valReg(a)
+		aReg := p.valRegW(a, width)
 		p.emit("%s %s, %s", cmp, operandReg(b), aReg)
 		return
 	}
-	p.emit("%s %s, %s", cmp, p.valReg(b), operandReg(a))
+	p.emit("%s %s, %s", cmp, p.valRegW(b, width), operandReg(a))
 }
 
 // lowerTest emits an arm64 bitwise-test flag-setter for "TEST a, b" using the
 // given mnemonic (TST for 64-bit, TSTW for 32-bit).
-func (p *arm64) lowerTest(op string, a, b operand.Op) {
-	aReg := p.valReg(a)
+func (p *arm64) lowerTest(op string, a, b operand.Op, width int) {
+	aReg := p.valRegW(a, width)
 	p.emit("%s %s, %s", op, p.regOrImm(b), aReg)
 }
 
@@ -1587,7 +1634,19 @@ func (p *arm64) lowerCMOV(i *ir.Instruction) {
 	cond := cmovCond(i.Opcode)
 	src := operandReg(i.Operands[0])
 	dst := operandReg(i.Operands[1])
-	p.emit("CSEL %s, %s, %s, %s", cond, src, dst, dst)
+	switch {
+	case strings.HasPrefix(i.Opcode, "CMOVW"):
+		// x86 CMOVW inserts 16 bits, leaving the upper 48 untouched on both
+		// condition outcomes. CSEL has no half-word form to express that.
+		panic("arm64: CMOVW is not supported (no 16-bit conditional select)")
+	case strings.HasPrefix(i.Opcode, "CMOVL"):
+		// x86 writes a 32-bit CMOV destination whichever way the condition goes,
+		// zero-extending it. The W-form select does the same; the 64-bit one
+		// would leave stale upper bits when the condition is false.
+		p.emit("CSELW %s, %s, %s, %s", cond, src, dst, dst)
+	default:
+		p.emit("CSEL %s, %s, %s, %s", cond, src, dst, dst)
+	}
 }
 
 func negImm(imm string) (bool, int) {
@@ -1715,18 +1774,33 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 			if !ok {
 				panic(fmt.Sprintf("arm64: %s consumes flags from %s, which the lowering cannot emit as a flag-setter", ins.Opcode, prev.Opcode))
 			}
-			if isLogicalFlagOp(prev.Opcode) {
-				// These lower to op+TST, which reproduces ZF/SF but not CF/OF.
-				// x86 logical ops clear CF/OF, so a carry/overflow consumer here
-				// would be reading a constant -- almost certainly a bug, and not
-				// something the TST substitution can express.
-				if cond, isConsumer := consumerCondition(ins.Opcode); isConsumer {
-					switch cond {
-					case "EQ", "NE", "MI", "PL":
-					default:
-						panic(fmt.Sprintf("arm64: %s consumes condition %s from %s, but the logical-op lowering only reproduces ZF/SF", ins.Opcode, cond, prev.Opcode))
-					}
+			cond, isCondConsumer := consumerCondition(ins.Opcode)
+			if isLogicalFlagOp(prev.Opcode) && isCondConsumer {
+				// x86's logical ops force CF=0 and OF=0, and their arm64
+				// counterparts force C=0 too. The raw bits agree, so armCond's
+				// meaning-inverting map (right for CMP/SUB, where the two ISAs
+				// use opposite borrow conventions) is wrong here: "JB" after a
+				// TEST is never taken on x86 but "BLO" always is. Only the Z/N
+				// conditions carry information after these, plus the signed ones
+				// since V is zero on both sides.
+				switch cond {
+				case "EQ", "NE", "MI", "PL", "LT", "LE", "GT", "GE":
+				default:
+					panic(fmt.Sprintf("arm64: %s consumes condition %s from %s, but after a logical op only the ZF/SF conditions mean the same thing on both architectures", ins.Opcode, cond, prev.Opcode))
 				}
+			}
+			if isCarryPreservingOp(prev.Opcode) && isCondConsumer && carryCondition(cond) {
+				// x86 INC/DEC deliberately preserve CF so they can appear inside
+				// a carry-driven loop; arm64 has no such form, and the ADDS/SUBS
+				// this lowers to overwrites C with the increment's own carry.
+				panic(fmt.Sprintf("arm64: %s reads carry condition %s across %s, which preserves CF on x86 but not once lowered", ins.Opcode, cond, prev.Opcode))
+			}
+			if strings.HasPrefix(ins.Opcode, "ADC") && !isBorrowProducer(prev.Opcode) {
+				// The ADC lowering (CSINC on HS) hardcodes the borrow convention,
+				// which only matches when the producer is a compare or subtract.
+				// After an addition both ISAs use the same carry-out convention,
+				// so the same CSINC would increment on exactly the wrong input.
+				panic(fmt.Sprintf("arm64: %s reads carry from %s; the lowering assumes a borrow-producing compare or subtract", ins.Opcode, prev.Opcode))
 			}
 			if mark {
 				setflags[k] = true
@@ -1785,7 +1859,36 @@ func flagSetter(op string) (mark, ok bool) {
 // lowering has no flag-setting form and instead appends a TST (see lowerArith).
 func isLogicalFlagOp(op string) bool {
 	switch op {
-	case "ORQ", "XORQ", "ORL", "XORL":
+	case "ORQ", "XORQ", "ORL", "XORL",
+		"ANDQ", "ANDL",
+		"TESTQ", "TESTL", "TESTW", "TESTB":
+		return true
+	}
+	return false
+}
+
+// isCarryPreservingOp reports whether an x86 opcode leaves CF untouched. INC and
+// DEC are defined that way, so a carry-condition consumer after one is really
+// reading an earlier producer's carry -- something this lowering cannot express,
+// because its arm64 counterpart (ADDS/SUBS) does write C.
+func isCarryPreservingOp(op string) bool {
+	switch op {
+	case "INCQ", "INCL", "DECQ", "DECL":
+		return true
+	}
+	return false
+}
+
+// isBorrowProducer reports whether an opcode's carry flag means "borrow" in the
+// subtraction sense, which is the convention ADC's lowering assumes.
+func isBorrowProducer(op string) bool {
+	return strings.HasPrefix(op, "CMP") || strings.HasPrefix(op, "SUB")
+}
+
+// carryCondition reports whether an arm64 condition reads C.
+func carryCondition(cond string) bool {
+	switch cond {
+	case "LO", "HS", "HI", "LS":
 		return true
 	}
 	return false
@@ -1857,9 +1960,16 @@ func subwordSafeEqNe(nodes []ir.Node) map[int]bool {
 					if cond != "EQ" && cond != "NE" {
 						eqne = false
 					}
-					continue // flag-transparent: keep scanning for chained consumers
+					continue // reads flags without writing them; chained consumers may follow
 				}
-				any = true // another flag-affecting instruction: this producer's flags are dead
+				if isFlagTransparent(next.Opcode) {
+					// Neither reads nor writes flags (a MOV, an LEA). The backward
+					// scan in flagProducers skips these; this one must too, or a
+					// producer whose consumer sits past one is wrongly blessed as
+					// EQ/NE-only and a signed sub-word compare lowers to unsigned.
+					continue
+				}
+				any = true // a genuine flag writer: this producer's flags are dead
 				break consumers
 			default:
 				break consumers // label: producer/consumer link does not cross blocks
