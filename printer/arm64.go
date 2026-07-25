@@ -372,8 +372,11 @@ func (c *goamd64Cond) consume(lines []string) bool {
 			// Undefined on arm64: #ifdef selects the else arm, #ifndef the then arm.
 			c.stack = append(c.stack, ppFrame{owned: owned, live: !owned || fields[0] == "#ifndef"})
 			handled = handled || owned
-		case "#if":
-			c.stack = append(c.stack, ppFrame{}) // not evaluated, tracked for nesting
+		case "#if", "#elif":
+			// Go's assembler has no #if or #elif -- it fails with "unexpected
+			// token after '#'". Tracking a frame for one would model a directive
+			// that cannot exist, and get the nesting wrong for the ones that can.
+			panic(fmt.Sprintf("arm64: %q is not a directive Go's assembler accepts", d))
 		case "#else":
 			if n := len(c.stack); n > 0 && c.stack[n-1].owned {
 				c.stack[n-1].live = !c.stack[n-1].live
@@ -481,6 +484,15 @@ func checkNoGOAMD64Define(c *ir.Comment) {
 		if (fields[0] == "#define" || fields[0] == "#undef") && strings.HasPrefix(fields[1], "GOAMD64_") {
 			panic(fmt.Sprintf("arm64: %q survives into the output, but this printer resolves "+
 				"GOAMD64 conditionals as undefined; the two would disagree", strings.TrimSpace(d)))
+		}
+		if fields[0] == "#include" {
+			// A header can define a GOAMD64 symbol, or open a conditional that a
+			// later #endif closes -- neither of which this printer can see, so
+			// both of its directive models would be resolving against text it
+			// never read. The file-header include is emitted by the printer
+			// itself, not as an IR comment, so nothing legitimate reaches here.
+			panic(fmt.Sprintf("arm64: %q survives into the output; this printer cannot see "+
+				"what it defines or opens", strings.TrimSpace(d)))
 		}
 	}
 }
@@ -673,11 +685,18 @@ func immVal(op operand.Op) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
-	v, err := strconv.ParseInt(strings.TrimPrefix(c, "$"), 0, 64)
-	if err != nil {
-		return 0, false
+	t := strings.TrimPrefix(c, "$")
+	if v, err := strconv.ParseInt(t, 0, 64); err == nil {
+		return v, true
 	}
-	return v, true
+	// A 64-bit pattern with the top bit set is legal written unsigned
+	// ("$0xffffffffffffffff"), which overflows a signed parse. amd64 accepts it
+	// and wraps to the same bit pattern, so interpret it the same way rather
+	// than refusing a program the other architecture assembles.
+	if u, err := strconv.ParseUint(t, 0, 64); err == nil {
+		return int64(u), true
+	}
+	return 0, false
 }
 
 func log2scale(s uint8) int {
@@ -951,20 +970,20 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("MVNW %s, %s", operandReg(ops[0]), operandReg(ops[0]))
 	case "SHRQ":
 		checkNotDoubleShift(i)
-		p.lowerShift("LSR", ops[0], ops[1])
+		p.lowerShift("LSR", ops[0], ops[1], 64)
 	case "SHLQ":
 		checkNotDoubleShift(i)
-		p.lowerShift("LSL", ops[0], ops[1])
+		p.lowerShift("LSL", ops[0], ops[1], 64)
 	case "SARQ":
-		p.lowerShift("ASR", ops[0], ops[1])
+		p.lowerShift("ASR", ops[0], ops[1], 64)
 	case "SHRL":
 		checkNotDoubleShift(i)
-		p.lowerShift("LSRW", ops[0], ops[1])
+		p.lowerShift("LSRW", ops[0], ops[1], 32)
 	case "SHLL":
 		checkNotDoubleShift(i)
-		p.lowerShift("LSLW", ops[0], ops[1])
+		p.lowerShift("LSLW", ops[0], ops[1], 32)
 	case "SARL":
-		p.lowerShift("ASRW", ops[0], ops[1])
+		p.lowerShift("ASRW", ops[0], ops[1], 32)
 	case "SHLB":
 		// x86 SHLB shifts only the destination's low byte and leaves the rest of
 		// the register untouched. Shift in scratch and insert bits 7:0, matching
@@ -980,9 +999,9 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	case "ROLL":
 		p.lowerROL(ops[0], ops[1], 32)
 	case "RORQ":
-		p.lowerShift("ROR", ops[0], ops[1])
+		p.lowerShift("ROR", ops[0], ops[1], 64)
 	case "RORL":
-		p.lowerShift("RORW", ops[0], ops[1])
+		p.lowerShift("RORW", ops[0], ops[1], 32)
 
 	// ---- BMI2 flag-free shifts/rotate: SHIFTX count, src, dst ----
 	// arm64 register shifts are already flag-free and take an arbitrary count
@@ -1500,8 +1519,17 @@ func checkNotDoubleShift(i *ir.Instruction) {
 }
 
 // lowerShift lowers "SHIFT count, dst" (count imm or register).
-func (p *arm64) lowerShift(op string, count, dst operand.Op) {
+func (p *arm64) lowerShift(op string, count, dst operand.Op, width int) {
 	d := operandReg(dst)
+	// x86 masks the shift count to the low 6 bits (64-bit) or 5 (32-bit), so
+	// "SHRQ $64" is a no-op and "SHRQ $65" shifts by one. arm64's register form
+	// masks identically, but its immediate form rejects a count at or above the
+	// width outright, which would turn a legal x86 program into an assembly
+	// error. Mask here so the immediate matches what x86 would have done.
+	if n, ok := immVal(count); ok {
+		p.emit("%s $%d, %s, %s", op, n&int64(width-1), d, d)
+		return
+	}
 	p.emit("%s %s, %s, %s", op, p.regOrImm(count), d, d)
 }
 

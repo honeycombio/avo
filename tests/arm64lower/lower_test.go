@@ -474,6 +474,12 @@ func TestOpcodeCoverage(t *testing.T) {
 		{"ShrL5", ShrL5, func(x uint64) uint64 { return uint64(uint32(x) >> 5) }},
 		{"SxWQ", SxWQ, func(x uint64) uint64 { return uint64(int64(int16(x))) }},
 		{"BtsQ5", BtsQ5, func(x uint64) uint64 { return x | 1<<5 }},
+		// Shift counts are masked mod width, as x86 does: $64 is a no-op at
+		// 64-bit width, $65 shifts by one, $32 is a no-op at 32-bit width.
+		{"ShrQ64", ShrQ64, func(x uint64) uint64 { return x }},
+		{"ShrQ65", ShrQ65, func(x uint64) uint64 { return x >> 1 }},
+		{"ShlQ64", ShlQ64, func(x uint64) uint64 { return x }},
+		{"ShrL32", ShrL32, func(x uint64) uint64 { return uint64(uint32(x)) }},
 		// BZHI's count is ctrl[7:0]: 256 masks to 0 bits, -1 masks to 255.
 		{"BzhiConst256", BzhiConst256, func(x uint64) uint64 { return 0 }},
 		{"BzhiConstNeg", BzhiConstNeg, func(x uint64) uint64 { return x }},

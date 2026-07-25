@@ -761,3 +761,58 @@ func TestARM64DirectiveCouplingGuards(t *testing.T) {
 		}
 	})
 }
+
+// TestARM64DirectiveModelLimits covers directives whose meaning this printer
+// cannot determine from the text it is given, and which it therefore refuses
+// rather than resolve against something it never read.
+func TestARM64DirectiveModelLimits(t *testing.T) {
+	cases := []struct {
+		name  string
+		lines []string
+		want  string
+	}{
+		{
+			// A header can define a GOAMD64 symbol, or open a conditional that a
+			// later #endif closes. Either way the printer would be resolving
+			// against text it cannot see, and the amd64 assembler can.
+			name:  "Include",
+			lines: []string{"#include \"defs.h\""},
+			want:  "cannot see",
+		},
+		{
+			// Go's assembler has no #if; it fails with "unexpected token".
+			name:  "If",
+			lines: []string{"#if 1"},
+			want:  "not a directive",
+		},
+		{
+			name:  "Elif",
+			lines: []string{"#elif 1"},
+			want:  "not a directive",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("dm")
+			ctx.SignatureExpr("func()")
+			ctx.Comment(c.lines...)
+			ctx.RET()
+
+			f, errs := ctx.Result()
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected a panic for %v", c.lines)
+				}
+				if msg, ok := r.(string); !ok || !strings.Contains(msg, c.want) {
+					t.Fatalf("unexpected panic: %v", r)
+				}
+			}()
+			_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+		})
+	}
+}

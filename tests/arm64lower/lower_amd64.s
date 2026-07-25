@@ -1574,6 +1574,34 @@ TEXT ·CmpLIntMin(SB), NOSPLIT, $0-16
 	MOVQ  CX, ret+8(FP)
 	RET
 
+// func ShrQ64(x uint64) uint64
+TEXT ·ShrQ64(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	SHRQ $0x40, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func ShrQ65(x uint64) uint64
+TEXT ·ShrQ65(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	SHRQ $0x41, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func ShlQ64(x uint64) uint64
+TEXT ·ShlQ64(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	SHLQ $0x40, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func ShrL32(x uint64) uint64
+TEXT ·ShrL32(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	SHRL $0x20, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
 // func IncQ(x uint64) uint64
 TEXT ·IncQ(SB), NOSPLIT, $0-16
 	MOVQ x+0(FP), AX

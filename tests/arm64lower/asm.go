@@ -1019,6 +1019,15 @@ func main() {
 		RET()
 	}
 
+	// x86 masks shift counts to the low 6 bits (64-bit) or 5 (32-bit), so a
+	// count at the width is a no-op and one past it shifts by the remainder.
+	// arm64's immediate shift form rejects such counts outright, so the lowering
+	// has to apply the same mask rather than pass the count through.
+	un("ShrQ64", func(x, d reg.GPVirtual) { MOVQ(x, d); SHRQ(operand.U8(64), d) })
+	un("ShrQ65", func(x, d reg.GPVirtual) { MOVQ(x, d); SHRQ(operand.U8(65), d) })
+	un("ShlQ64", func(x, d reg.GPVirtual) { MOVQ(x, d); SHLQ(operand.U8(64), d) })
+	un("ShrL32", func(x, d reg.GPVirtual) { MOVQ(x, d); SHRL(operand.U8(32), d.As32()) })
+
 	// ---- filling out the dispatch table ----
 	//
 	// Everything below exists because TestOpcodeDispatchIsCovered found it

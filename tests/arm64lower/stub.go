@@ -272,6 +272,14 @@ func MovQBit31Reg() uint64
 
 func CmpLIntMin(x uint64) uint64
 
+func ShrQ64(x uint64) uint64
+
+func ShrQ65(x uint64) uint64
+
+func ShlQ64(x uint64) uint64
+
+func ShrL32(x uint64) uint64
+
 func IncQ(x uint64) uint64
 
 func DecL(x uint64) uint64
