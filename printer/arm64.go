@@ -266,7 +266,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	p.Printf(", %s\n", textsize(f))
 
 	p.clear = true
-	nodes := liveNodes(f.Nodes)
+	nodes := f.Nodes
 	setflags := flagProducers(nodes)
 	subwordSafe := subwordSafeEqNe(nodes)
 	p.constOK = false
@@ -280,19 +280,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 		case *ir.Comment:
 			p.flush()
 			p.ensureclear()
-			if hasForeignDirective(n) {
-				// A directive this printer does not evaluate becomes a real
-				// control-flow boundary in the assembled output, so every
-				// analysis that carries state along a straight line has to stop
-				// here -- the same treatment the label case above gets. Both of
-				// these caches record what an earlier instruction established;
-				// if that instruction sat inside an arm the assembler drops, the
-				// state describes code that is no longer there. Missing this is
-				// how a constant folded inside an #ifdef ended up used outside
-				// it, and how a materialized address outlived the ADD that built
-				// it.
-				p.constOK = false
-			}
+			checkNoDirective(n)
 			for _, line := range n.Lines {
 				p.Printf("\t// %s\n", line)
 			}
@@ -330,169 +318,27 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	p.flush()
 }
 
-// goamd64Cond evaluates #ifdef/#ifndef/#else/#endif directives that test a
-// GOAMD64_* symbol, which is never defined when building for arm64. Directives
-// naming anything else cannot be evaluated here, so their arms are passed
-// through unchanged; they are still tracked, because an #endif has to close the
-// conditional it actually belongs to.
-type goamd64Cond struct {
-	stack []ppFrame
-}
-
-// ppFrame is one open conditional. owned marks the ones this evaluator decides;
-// live is meaningful only for those.
-type ppFrame struct {
-	owned, live bool
-}
-
-// active reports whether the current position sits inside a live arm.
-func (c *goamd64Cond) active() bool {
-	for _, f := range c.stack {
-		if f.owned && !f.live {
-			return false
-		}
-	}
-	return true
-}
-
-// consume interprets a comment's lines as preprocessor directives, reporting
-// whether they belong to this evaluator (and so should not be printed).
-func (c *goamd64Cond) consume(lines []string) bool {
-	handled, foreign := false, ""
-	for _, line := range lines {
-		d := normalizeDirective(line)
-		if !strings.HasPrefix(d, "#") {
-			continue
-		}
-		fields := strings.Fields(d)
-		owned := false
-		switch fields[0] {
-		case "#ifdef", "#ifndef":
-			owned = len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_")
-			// Undefined on arm64: #ifdef selects the else arm, #ifndef the then arm.
-			c.stack = append(c.stack, ppFrame{owned: owned, live: !owned || fields[0] == "#ifndef"})
-			handled = handled || owned
-		case "#if", "#elif":
-			// Go's assembler has no #if or #elif -- it fails with "unexpected
-			// token after '#'". Tracking a frame for one would model a directive
-			// that cannot exist, and get the nesting wrong for the ones that can.
-			panic(fmt.Sprintf("arm64: %q is not a directive Go's assembler accepts", d))
-		case "#else":
-			if n := len(c.stack); n > 0 && c.stack[n-1].owned {
-				c.stack[n-1].live = !c.stack[n-1].live
-				owned, handled = true, true
-			}
-		case "#endif":
-			// Always closes the innermost conditional, whoever owns it.
-			if n := len(c.stack); n > 0 {
-				owned = c.stack[n-1].owned
-				c.stack = c.stack[:n-1]
-				handled = handled || owned
-			}
-		}
-		if !owned && foreign == "" {
-			foreign = d
-		}
-	}
-	// A comment carrying a directive this evaluator owns is dropped whole, so
-	// anything else sharing the node disappears with it -- and a foreign
-	// directive would survive into the amd64 output while vanishing here. Only
-	// this function can tell the two apart: ownership of #else and #endif
-	// depends on which frame is innermost, so it is a property of the stack, not
-	// of the text.
-	if handled && foreign != "" {
-		panic(fmt.Sprintf("arm64: comment mixes a GOAMD64 directive with %q; "+
-			"emit one directive per comment so both architectures see the same text", foreign))
-	}
-	return handled
-}
-
-// normalizeDirective canonicalizes a preprocessor line for matching. Go's
-// assembler tokenizes the '#' separately, so "# ifdef FOO" is a live directive
-// that an exact-string match would miss entirely -- and missing one means both
-// arms of a conditional get resolved as though it were not there.
-func normalizeDirective(line string) string {
-	// Anchored to the RAW line, deliberately. A directive only becomes live
-	// because the postprocessing step rewrites "\t// #" back to "#", and that
-	// match is exact: a line with a space BEFORE the '#' is not rewritten and
-	// stays an inert comment on the amd64 side. Trimming leading space here
-	// would claim such a line as ours and resolve the conditional on arm64 while
-	// amd64 ran both arms -- the printer being more permissive than the rewrite
-	// it depends on. Space AFTER the '#' is different: the assembler tokenizes
-	// the '#' separately, so "# ifdef" really is live, and is normalized below.
-	if !strings.HasPrefix(line, "#") {
-		return ""
-	}
-	return "#" + strings.TrimSpace(line[1:])
-}
-
-// liveNodes resolves the GOAMD64 conditionals up front, returning only the nodes
-// that will actually be emitted. Doing this before anything else matters because
-// the flag analyses recover producer/consumer links by scanning the node list:
-// left in place, a markable producer inside a dead arm could absorb the
-// flag-setting mark that a live producer before the conditional needed, leaving
-// a consumer reading stale flags. Dropping dead arms here also removes their
-// labels, so a jump into one becomes an assembler error rather than a silent
-// landing on whatever follows the conditional.
-func liveNodes(nodes []ir.Node) []ir.Node {
-	var pp goamd64Cond
-	out := make([]ir.Node, 0, len(nodes))
-	for _, n := range nodes {
-		if c, ok := n.(*ir.Comment); ok && pp.consume(c.Lines) {
-			// consume validates that the node carries nothing else that would
-			// vanish along with it.
-			continue
-		}
-		if !pp.active() {
-			continue
-		}
-		if c, ok := n.(*ir.Comment); ok {
-			checkNoGOAMD64Define(c)
-		}
-		out = append(out, n)
-	}
-	// An owned conditional left open swallows the rest of the function --
-	// including its RET -- and would emit a TEXT block with an empty body. The
-	// amd64 assembler rejects the unbalanced directive, so this is only ever a
-	// question of which side reports it, but the arm64 output should not depend
-	// on that. Foreign frames are the assembler's business and are left alone.
-	for _, f := range pp.stack {
-		if f.owned {
-			panic("arm64: GOAMD64 conditional left unclosed; the rest of the function would be dropped")
-		}
-	}
-	return out
-}
-
-// checkNoGOAMD64Define refuses a surviving #define or #undef of a GOAMD64
-// symbol.
+// checkNoDirective refuses a preprocessor directive in the instruction stream.
 //
-// This evaluator resolves every "#ifdef GOAMD64_*" as undefined, which is right
-// for the toolchain's own symbols -- but the assembler also honours symbols
-// defined in the file. A #define that survives into the output makes one of
-// them defined on every build, including the baseline, so the amd64 side takes
-// an arm this printer already resolved as dead. A define inside an arm we drop
-// is fine and is not seen here, which keeps the guarded force-enable idiom
-// working; it is the unguarded one that has to be loud.
-func checkNoGOAMD64Define(c *ir.Comment) {
+// avo emits directives as comments, inert until a postprocessing step rewrites
+// "\t// #" back to "#". This printer used to evaluate the GOAMD64 conditionals
+// among them and treat the rest as analysis boundaries. That machinery produced
+// roughly a third of the miscompiles found in review -- every one an
+// external-coupling bug, where this printer's model of when a directive is live
+// disagreed with the assembler's, the rewrite's, or a header's -- and it served
+// no generator that uses this lowering: zstd and huff0 emit no directives at
+// all, and s2, which does, is amd64-only.
+//
+// Refusing them outright removes that entire class. BMI2 and other GOAMD64
+// variants are still supported through twin FUNCTIONS, which is what the
+// generators here actually use; only inline conditional arms are gone. The
+// evaluator, with every fix review found for it, is preserved on the
+// lizf.arm64-goamd64-directives branch if it is ever wanted back.
+func checkNoDirective(c *ir.Comment) {
 	for _, line := range c.Lines {
-		d := normalizeDirective(line)
-		fields := strings.Fields(d)
-		if len(fields) < 2 {
-			continue
-		}
-		if (fields[0] == "#define" || fields[0] == "#undef") && strings.HasPrefix(fields[1], "GOAMD64_") {
-			panic(fmt.Sprintf("arm64: %q survives into the output, but this printer resolves "+
-				"GOAMD64 conditionals as undefined; the two would disagree", strings.TrimSpace(d)))
-		}
-		if fields[0] == "#include" {
-			// A header can define a GOAMD64 symbol, or open a conditional that a
-			// later #endif closes -- neither of which this printer can see, so
-			// both of its directive models would be resolving against text it
-			// never read. The file-header include is emitted by the printer
-			// itself, not as an IR comment, so nothing legitimate reaches here.
-			panic(fmt.Sprintf("arm64: %q survives into the output; this printer cannot see "+
-				"what it defines or opens", strings.TrimSpace(d)))
+		if d := strings.TrimSpace(line); strings.HasPrefix(d, "#") {
+			panic(fmt.Sprintf("arm64: preprocessor directive %q is not supported; "+
+				"use twin functions for GOAMD64 variants", d))
 		}
 	}
 }
@@ -2099,18 +1945,9 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 		}
 		found := false
 		for k := j - 1; k >= 0; k-- {
-			if cm, isComment := nodes[k].(*ir.Comment); isComment {
-				if hasForeignDirective(cm) {
-					// liveNodes resolved and removed every GOAMD64 conditional, so
-					// a surviving directive is one this printer does not evaluate
-					// but the assembler's preprocessor will. Scanning through it
-					// treats both arms as straight-line code, which can mark a
-					// producer inside an arm that the amd64 build deletes -- the
-					// branch then reads stale NZCV on arm64 only. Treat it like a
-					// label: the flags cross an edge this printer does not model.
-					panic(fmt.Sprintf("arm64: %s reads flags across the preprocessor directive %q, "+
-						"which this printer does not evaluate", ins.Opcode, firstDirective(cm)))
-				}
+			if _, isComment := nodes[k].(*ir.Comment); isComment {
+				// Comments carry no code and no directives -- those are refused
+				// before they reach any analysis -- so nothing here affects flags.
 				continue
 			}
 			prev, isInstr := nodes[k].(*ir.Instruction)
@@ -2185,39 +2022,6 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 		}
 	}
 	return setflags
-}
-
-// hasForeignDirective reports whether a comment carries an assembler
-// preprocessor directive that this printer does not evaluate. liveNodes
-// consumes and removes the GOAMD64 conditionals it understands, so anything
-// left is a real conditional to the assembler and an invisible one here: the
-// flag scans must stop at it rather than read through both arms.
-// firstDirective returns the directive line a diagnostic should name, rather
-// than blaming the comment's first line when the directive is on a later one.
-func firstDirective(c *ir.Comment) string {
-	for _, line := range c.Lines {
-		if d := strings.TrimSpace(line); strings.HasPrefix(d, "#") {
-			return d
-		}
-	}
-	return ""
-}
-
-func hasForeignDirective(c *ir.Comment) bool {
-	for _, line := range c.Lines {
-		// Any '#'-leading line, not just a known conditional keyword. Go's
-		// assembler accepts a space after the '#', so "# ifdef FOO" is a live
-		// conditional that a keyword match misses entirely; #include splices in
-		// text that can sit between a producer and its consumer; and a directive
-		// this printer has never heard of is precisely the case to be
-		// conservative about. Being wrong in this direction costs a spurious
-		// generation failure, which is loud and fixable. Being wrong in the
-		// other direction is a silent miscompile.
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			return true
-		}
-	}
-	return false
 }
 
 // isFlagTransparent reports whether an opcode's lowering leaves NZCV unchanged.
@@ -2371,11 +2175,6 @@ func subwordSafeEqNe(nodes []ir.Node) map[int]bool {
 		for k := j + 1; k < len(nodes); k++ {
 			switch next := nodes[k].(type) {
 			case *ir.Comment:
-				if hasForeignDirective(next) {
-					// An arm boundary this printer does not evaluate; like a label,
-					// the consumers past it are not knowably this producer's.
-					break consumers
-				}
 				continue
 			case *ir.Instruction:
 				if cond, isConsumer := consumerCondition(next.Opcode); isConsumer {

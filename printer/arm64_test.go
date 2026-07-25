@@ -182,36 +182,6 @@ func TestARM64CallRejected(t *testing.T) {
 	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
 }
 
-// TestARM64GOAMD64ConditionalsEvaluated checks that a GOAMD64 #ifdef/#else pair
-// contributes only its else arm to arm64 output. Generators emit these
-// directives as comments, so passing them through would either duplicate the
-// work or, if the comment markers are never stripped, run both arms.
-func TestARM64GOAMD64ConditionalsEvaluated(t *testing.T) {
-	ctx := build.NewContext()
-	ctx.Function("cond")
-	ctx.SignatureExpr("func()")
-	ctx.Comment("#ifdef GOAMD64_v3")
-	ctx.TZCNTQ(reg.RAX, reg.RCX) // amd64-only arm
-	ctx.Comment("#else")
-	ctx.BSFQ(reg.RAX, reg.RDX) // the arm arm64 must take
-	ctx.Comment("#endif")
-	ctx.RET()
-
-	out := printARM64(t, ctx, printer.NewGoRunConfig())
-
-	if strings.Contains(out, "#ifdef") || strings.Contains(out, "#else") || strings.Contains(out, "#endif") {
-		t.Errorf("GOAMD64 directives survived into arm64 output:\n%s", out)
-	}
-	// BSFQ targets RDX (R2); TZCNTQ targets RCX (R1). Only the else arm should
-	// have been lowered.
-	if !strings.Contains(out, "R2") {
-		t.Errorf("else arm (BSFQ -> R2) missing from output:\n%s", out)
-	}
-	if strings.Contains(out, "R1") {
-		t.Errorf("then arm (TZCNTQ -> R1) should have been skipped:\n%s", out)
-	}
-}
-
 // TestARM64FlagSemanticGuards covers sequences the lowering must refuse rather
 // than miscompile. Each pairs a flag producer with a consumer whose condition
 // the arm64 translation cannot faithfully reproduce, because the two
@@ -406,70 +376,6 @@ func TestARM64HighByteEncodability(t *testing.T) {
 	}
 }
 
-// TestARM64NestedForeignConditional checks that an #endif closes the innermost
-// conditional even when a GOAMD64 one is nested inside a directive this printer
-// does not evaluate. Resolving them out of order would drop live code.
-func TestARM64NestedForeignConditional(t *testing.T) {
-	ctx := build.NewContext()
-	ctx.Function("nested")
-	ctx.SignatureExpr("func()")
-	ctx.Comment("#ifdef SOMETHING_ELSE")
-	ctx.Comment("#ifdef GOAMD64_v3")
-	ctx.MOVQ(operand.U64(1), reg.RAX) // dead on arm64
-	ctx.Comment("#endif")
-	ctx.MOVQ(operand.U64(2), reg.RCX) // live: inside the foreign conditional only
-	ctx.Comment("#endif")
-	ctx.RET()
-
-	out := printARM64(t, ctx, printer.NewGoRunConfig())
-	if strings.Contains(out, "$0x0000000000000001") {
-		t.Errorf("dead GOAMD64 arm was emitted:\n%s", out)
-	}
-	if !strings.Contains(out, "$0x0000000000000002") {
-		t.Errorf("live code after the inner #endif was dropped:\n%s", out)
-	}
-}
-
-// TestARM64ConstWindowStopsAtDirective checks that the constant window does not
-// carry a folded value across a preprocessor directive this printer cannot
-// evaluate. If the MOV that established the constant sits inside an arm the
-// assembler later drops, a fold emitted after the #endif is unconditional and
-// wrong.
-//
-// The address cache used to need the same guard and had its own subtest here.
-// It is gone: it bought two instructions across the whole of zstd and huff0,
-// because almost every access folds into the instruction and never materializes
-// an address, and it cost two silent miscompiles. The constant window stays --
-// it is not merely an optimization. It is the only path that implements x86's
-// saturating semantics for BZHI/BEXTR counts >= 64; deleting it turned correct
-// programs into wrong ones, which the differential suite caught on arm64.
-func TestARM64ConstWindowStopsAtDirective(t *testing.T) {
-	for _, c := range []struct{ name, open, close string }{
-		{"Plain", "#ifdef FOO", "#endif"},
-		// Go's assembler tokenizes the '#' separately, so this is live too.
-		{"Spaced", "# ifdef FOO", "# endif"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			ctx := build.NewContext()
-			ctx.Function("cw")
-			ctx.SignatureExpr("func()")
-			ctx.MOVQ(operand.U64(5), reg.RCX)
-			ctx.Comment(c.open)
-			ctx.MOVQ(operand.U64(9), reg.RCX)
-			ctx.Comment(c.close)
-			ctx.SHLXQ(reg.RCX, reg.RAX, reg.RAX)
-			ctx.RET()
-
-			out := printARM64(t, ctx, printer.NewGoRunConfig())
-			// Either folded constant would be wrong: $9 came from inside the arm,
-			// $5 assumes the arm was not taken. The shift must read the register.
-			if strings.Contains(out, "LSL $9") || strings.Contains(out, "LSL $5") {
-				t.Errorf("constant folded across a preprocessor directive:\n%s", out)
-			}
-		})
-	}
-}
-
 // dispatch loop, and tests here that fail when that barrier is removed.
 
 // TestARM64NoProducerRejected checks that a flag consumer with no producer
@@ -493,137 +399,6 @@ func TestARM64NoProducerRejected(t *testing.T) {
 			t.Fatal("expected a panic for a consumer with no producer")
 		}
 		if msg, ok := r.(string); !ok || !strings.Contains(msg, "no producer") {
-			t.Fatalf("unexpected panic: %v", r)
-		}
-	}()
-	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
-}
-
-// TestARM64DirectiveNodeIntegrity covers the two ways liveNodes could drop
-// content silently. Both concern the same asymmetry: this printer resolves
-// GOAMD64 conditionals while the amd64 side keeps them, so anything discarded
-// along with a resolved directive is discarded from only one of the two
-// binaries.
-func TestARM64DirectiveNodeIntegrity(t *testing.T) {
-	t.Run("MixedComment", func(t *testing.T) {
-		// The #endif is owned and resolved away; the #include is not, and would
-		// survive into the amd64 output while vanishing here.
-		ctx := build.NewContext()
-		ctx.Function("mixed")
-		ctx.SignatureExpr("func()")
-		ctx.Comment("#ifdef GOAMD64_v3")
-		ctx.Comment("#endif", "#include \"extra.h\"")
-		ctx.RET()
-
-		f, errs := ctx.Result()
-		if errs != nil {
-			t.Fatal(errs)
-		}
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Fatal("expected a panic for a comment mixing owned and foreign directives")
-			}
-			if msg, ok := r.(string); !ok || !strings.Contains(msg, "one directive per comment") {
-				t.Fatalf("unexpected panic: %v", r)
-			}
-		}()
-		_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
-	})
-
-	t.Run("UnclosedConditional", func(t *testing.T) {
-		// Without the guard this emits a TEXT block with an empty body -- the
-		// RET included -- and says nothing about it.
-		ctx := build.NewContext()
-		ctx.Function("unclosed")
-		ctx.SignatureExpr("func()")
-		ctx.Comment("#ifdef GOAMD64_v3")
-		ctx.RET()
-
-		f, errs := ctx.Result()
-		if errs != nil {
-			t.Fatal(errs)
-		}
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Fatal("expected a panic for an unclosed GOAMD64 conditional")
-			}
-			if msg, ok := r.(string); !ok || !strings.Contains(msg, "unclosed") {
-				t.Fatalf("unexpected panic: %v", r)
-			}
-		}()
-		_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
-	})
-
-	t.Run("ForeignUnclosedIsAllowed", func(t *testing.T) {
-		// A conditional this printer does not own is the assembler's business;
-		// leaving it open must not be rejected here.
-		ctx := build.NewContext()
-		ctx.Function("foreignopen")
-		ctx.SignatureExpr("func()")
-		ctx.Comment("#ifdef SOMETHING_ELSE")
-		ctx.RET()
-
-		out := printARM64(t, ctx, printer.NewGoRunConfig())
-		if !strings.Contains(out, "RET") {
-			t.Errorf("expected the body to survive a foreign conditional:\n%s", out)
-		}
-	})
-}
-
-// TestARM64SpacedDirectivesResolved covers directives written with a space
-// after the '#'. Go's assembler tokenizes the '#' separately, so "# else" is a
-// live directive; an exact-string match misses it, and missing an #else means
-// the evaluator never toggles the arm, so BOTH arms get dropped.
-func TestARM64SpacedDirectivesResolved(t *testing.T) {
-	ctx := build.NewContext()
-	ctx.Function("spaced")
-	ctx.SignatureExpr("func()")
-	ctx.Comment("# ifdef GOAMD64_v3")
-	ctx.ADDQ(operand.U32(10), reg.RAX) // amd64-only arm
-	ctx.Comment("# else")
-	ctx.ADDQ(operand.U32(10), reg.RCX) // the arm arm64 must take
-	ctx.Comment("# endif")
-	ctx.RET()
-
-	out := printARM64(t, ctx, printer.NewGoRunConfig())
-	if !strings.Contains(out, "ADD $0x0000000a, R1, R1") {
-		t.Errorf("spaced #else was not resolved; the live arm is missing:\n%s", out)
-	}
-	if strings.Contains(out, "R0, R0") {
-		t.Errorf("spaced #ifdef was not resolved; the dead arm survived:\n%s", out)
-	}
-}
-
-// TestARM64ForeignElseMixedComment covers ownership being a property of the
-// preprocessor stack rather than of the text. A comment can carry an #else
-// belonging to a FOREIGN conditional alongside a directive this printer owns;
-// dropping the node whole then moves code inside an arm it was never in, with
-// balanced directives on both sides so no assembler ever complains.
-func TestARM64ForeignElseMixedComment(t *testing.T) {
-	ctx := build.NewContext()
-	ctx.Function("foreignelse")
-	ctx.SignatureExpr("func()")
-	ctx.Comment("#ifdef MYFLAG")
-	ctx.ADDQ(operand.U32(1), reg.RAX)
-	ctx.Comment("#else", "#ifdef GOAMD64_v4") // the #else is MYFLAG's, not ours
-	ctx.ADDQ(operand.U32(50), reg.RAX)
-	ctx.Comment("#endif")
-	ctx.ADDQ(operand.U32(10), reg.RAX)
-	ctx.Comment("#endif")
-	ctx.RET()
-
-	f, errs := ctx.Result()
-	if errs != nil {
-		t.Fatal(errs)
-	}
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("expected a panic for a comment mixing an owned directive with a foreign #else")
-		}
-		if msg, ok := r.(string); !ok || !strings.Contains(msg, "one directive per comment") {
 			t.Fatalf("unexpected panic: %v", r)
 		}
 	}()
@@ -690,113 +465,31 @@ func TestARM64PseudoSPLocalsOffset(t *testing.T) {
 	}
 }
 
-// TestARM64DirectiveCouplingGuards covers the two ways this printer's model of
-// which directives are live can disagree with what the assembler sees.
+// TestARM64DirectivesRejected checks that preprocessor directives are refused
+// rather than interpreted.
 //
-// The printer resolves GOAMD64 conditionals on the assumption that a
-// postprocessing step rewrites "\t// #" back to "#" in both outputs. Both cases
-// below are ways that assumption silently fails.
-func TestARM64DirectiveCouplingGuards(t *testing.T) {
-	t.Run("LeadingSpaceIsNotOwned", func(t *testing.T) {
-		// The rewrite matches "\t// #" exactly, so a space BEFORE the '#' leaves
-		// the line an inert comment on amd64. Claiming it here would resolve the
-		// conditional on arm64 while amd64 ran both arms.
-		ctx := build.NewContext()
-		ctx.Function("leadspace")
-		ctx.SignatureExpr("func()")
-		ctx.XORQ(reg.RAX, reg.RAX)
-		ctx.Comment(" #ifdef GOAMD64_v3")
-		ctx.ADDQ(operand.U32(1), reg.RAX)
-		ctx.Comment(" #endif")
-		ctx.RET()
-
-		out := printARM64(t, ctx, printer.NewGoRunConfig())
-		// Not ours: the body must survive, matching amd64 where the directive is
-		// inert and both arms are live.
-		if !strings.Contains(out, "ADD $0x00000001") {
-			t.Errorf("a leading-space directive was resolved as if it were live:\n%s", out)
-		}
-	})
-
-	t.Run("SurvivingGOAMD64DefineRejected", func(t *testing.T) {
-		// A #define that reaches the output makes the symbol defined for the
-		// assembler on every build, contradicting this printer's resolution of
-		// it as undefined.
-		ctx := build.NewContext()
-		ctx.Function("forcedefine")
-		ctx.SignatureExpr("func()")
-		ctx.Comment("#define GOAMD64_v3")
-		ctx.RET()
-
-		f, errs := ctx.Result()
-		if errs != nil {
-			t.Fatal(errs)
-		}
-		defer func() {
-			r := recover()
-			if r == nil {
-				t.Fatal("expected a panic for a surviving GOAMD64 define")
-			}
-			if msg, ok := r.(string); !ok || !strings.Contains(msg, "would disagree") {
-				t.Fatalf("unexpected panic: %v", r)
-			}
-		}()
-		_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
-	})
-
-	t.Run("GuardedDefineStillWorks", func(t *testing.T) {
-		// The force-enable idiom s2 ships: the define sits inside an arm this
-		// printer drops, so it never reaches the output and must not panic.
-		ctx := build.NewContext()
-		ctx.Function("guardeddefine")
-		ctx.SignatureExpr("func()")
-		ctx.Comment("#ifdef GOAMD64_v4")
-		ctx.Comment("#define GOAMD64_v3")
-		ctx.Comment("#endif")
-		ctx.RET()
-
-		out := printARM64(t, ctx, printer.NewGoRunConfig())
-		if strings.Contains(out, "GOAMD64_v3") {
-			t.Errorf("a define inside a dead arm reached the output:\n%s", out)
-		}
-	})
-}
-
-// TestARM64DirectiveModelLimits covers directives whose meaning this printer
-// cannot determine from the text it is given, and which it therefore refuses
-// rather than resolve against something it never read.
-func TestARM64DirectiveModelLimits(t *testing.T) {
-	cases := []struct {
-		name  string
-		lines []string
-		want  string
-	}{
-		{
-			// A header can define a GOAMD64 symbol, or open a conditional that a
-			// later #endif closes. Either way the printer would be resolving
-			// against text it cannot see, and the amd64 assembler can.
-			name:  "Include",
-			lines: []string{"#include \"defs.h\""},
-			want:  "cannot see",
-		},
-		{
-			// Go's assembler has no #if; it fails with "unexpected token".
-			name:  "If",
-			lines: []string{"#if 1"},
-			want:  "not a directive",
-		},
-		{
-			name:  "Elif",
-			lines: []string{"#elif 1"},
-			want:  "not a directive",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+// This printer used to evaluate GOAMD64 conditionals and treat other directives
+// as analysis boundaries. That machinery produced roughly a third of the
+// miscompiles review found -- all of them external-coupling bugs, where its
+// model of when a directive is live disagreed with the assembler, with the
+// "\t// #" rewrite, or with a header it could not read -- while serving no
+// generator that uses this lowering. The cases below are the ones that were
+// silently wrong at various points; all of them are now simply refused.
+func TestARM64DirectivesRejected(t *testing.T) {
+	for _, lines := range [][]string{
+		{"#ifdef GOAMD64_v3"},
+		{"# ifdef GOAMD64_v3"},  // the assembler accepts a space after '#'
+		{" #ifdef GOAMD64_v3"},  // inert after the rewrite, live to this printer
+		{"#define GOAMD64_v3"},  // would define the symbol for the assembler
+		{"#include \"defs.h\""}, // could define or open anything
+		{"#endif"},
+		{"#if 1"}, // not a directive Go's assembler has at all
+	} {
+		t.Run(strings.TrimSpace(lines[0]), func(t *testing.T) {
 			ctx := build.NewContext()
-			ctx.Function("dm")
+			ctx.Function("d")
 			ctx.SignatureExpr("func()")
-			ctx.Comment(c.lines...)
+			ctx.Comment(lines...)
 			ctx.RET()
 
 			f, errs := ctx.Result()
@@ -806,13 +499,28 @@ func TestARM64DirectiveModelLimits(t *testing.T) {
 			defer func() {
 				r := recover()
 				if r == nil {
-					t.Fatalf("expected a panic for %v", c.lines)
+					t.Fatalf("expected a panic for %q", lines)
 				}
-				if msg, ok := r.(string); !ok || !strings.Contains(msg, c.want) {
+				if msg, ok := r.(string); !ok || !strings.Contains(msg, "not supported") {
 					t.Fatalf("unexpected panic: %v", r)
 				}
 			}()
 			_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
 		})
+	}
+}
+
+// TestARM64PlainCommentsPass checks that ordinary comments are untouched --
+// only directives are refused.
+func TestARM64PlainCommentsPass(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("c")
+	ctx.SignatureExpr("func()")
+	ctx.Comment("this is a normal comment", "spanning two lines")
+	ctx.RET()
+
+	out := printARM64(t, ctx, printer.NewGoRunConfig())
+	if !strings.Contains(out, "// this is a normal comment") {
+		t.Errorf("plain comment did not survive:\n%s", out)
 	}
 }
