@@ -1548,6 +1548,32 @@ TEXT ·MovQBit31Reg(SB), NOSPLIT, $0-8
 	MOVQ AX, ret+0(FP)
 	RET
 
+// func CmpLIntMin(x uint64) uint64
+TEXT ·CmpLIntMin(SB), NOSPLIT, $0-16
+	MOVQ  x+0(FP), AX
+	XORQ  CX, CX
+	XORQ  DX, DX
+	CMPL  AX, $-2147483648
+	SETLT DL
+	ORQ   DX, CX
+	XORQ  DX, DX
+	CMPL  AX, $-2147483648
+	SETGE DL
+	SHLQ  $0x01, DX
+	ORQ   DX, CX
+	XORQ  DX, DX
+	CMPL  AX, $-2147483648
+	SETGT DL
+	SHLQ  $0x02, DX
+	ORQ   DX, CX
+	XORQ  DX, DX
+	CMPL  AX, $-2147483648
+	SETLE DL
+	SHLQ  $0x03, DX
+	ORQ   DX, CX
+	MOVQ  CX, ret+8(FP)
+	RET
+
 // func IncQ(x uint64) uint64
 TEXT ·IncQ(SB), NOSPLIT, $0-16
 	MOVQ x+0(FP), AX

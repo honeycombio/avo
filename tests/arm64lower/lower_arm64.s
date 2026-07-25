@@ -1713,6 +1713,36 @@ TEXT ·MovQBit31Reg(SB), NOSPLIT, $0-8
 	MOVD R0, ret+0(FP)
 	RET
 
+// func CmpLIntMin(x uint64) uint64
+TEXT ·CmpLIntMin(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0, R1
+	MOVD $0, R2
+	CMPW $-2147483648, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R2
+	ORR  R2, R1, R1
+	MOVD $0, R2
+	CMPW $-2147483648, R0
+	CSET GE, R16
+	BFI  $0, R16, $8, R2
+	LSL  $0x01, R2, R2
+	ORR  R2, R1, R1
+	MOVD $0, R2
+	CMPW $-2147483648, R0
+	CSET GT, R16
+	BFI  $0, R16, $8, R2
+	LSL  $0x02, R2, R2
+	ORR  R2, R1, R1
+	MOVD $0, R2
+	CMPW $-2147483648, R0
+	CSET LE, R16
+	BFI  $0, R16, $8, R2
+	LSL  $0x03, R2, R2
+	ORR  R2, R1, R1
+	MOVD R1, ret+8(FP)
+	RET
+
 // func IncQ(x uint64) uint64
 TEXT ·IncQ(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0

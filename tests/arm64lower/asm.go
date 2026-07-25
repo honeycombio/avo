@@ -994,6 +994,31 @@ func main() {
 		RET()
 	}
 
+	// CmpLIntMin: "CMP a, -b" lowers to "CMN a, b" because subtracting a
+	// negative adds its magnitude -- but at the signed minimum the negated
+	// magnitude is not representable as a positive at that width, so arm64 would
+	// add -2^31 where x86 subtracts it. N, Z and C survive; V is computed from a
+	// different true value and inverts, flipping every signed condition. The
+	// results are packed so all four signed conditions are checked at once.
+	TEXT("CmpLIntMin", NOSPLIT, "func(x uint64) uint64")
+	{
+		x, acc := GP64(), GP64()
+		Load(Param("x"), x)
+		XORQ(acc, acc)
+		for i, set := range []func(operand.Op){SETLT, SETGE, SETGT, SETLE} {
+			t := GP64()
+			XORQ(t, t)
+			CMPL(x.As32(), operand.I32(-2147483648))
+			set(t.As8())
+			if i > 0 {
+				SHLQ(operand.U8(i), t)
+			}
+			ORQ(t, acc)
+		}
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
+
 	// ---- filling out the dispatch table ----
 	//
 	// Everything below exists because TestOpcodeDispatchIsCovered found it

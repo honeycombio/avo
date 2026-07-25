@@ -689,3 +689,75 @@ func TestARM64PseudoSPLocalsOffset(t *testing.T) {
 		t.Errorf("expected locals shifted to 8(RSP) and 16(RSP):\n%s", out)
 	}
 }
+
+// TestARM64DirectiveCouplingGuards covers the two ways this printer's model of
+// which directives are live can disagree with what the assembler sees.
+//
+// The printer resolves GOAMD64 conditionals on the assumption that a
+// postprocessing step rewrites "\t// #" back to "#" in both outputs. Both cases
+// below are ways that assumption silently fails.
+func TestARM64DirectiveCouplingGuards(t *testing.T) {
+	t.Run("LeadingSpaceIsNotOwned", func(t *testing.T) {
+		// The rewrite matches "\t// #" exactly, so a space BEFORE the '#' leaves
+		// the line an inert comment on amd64. Claiming it here would resolve the
+		// conditional on arm64 while amd64 ran both arms.
+		ctx := build.NewContext()
+		ctx.Function("leadspace")
+		ctx.SignatureExpr("func()")
+		ctx.XORQ(reg.RAX, reg.RAX)
+		ctx.Comment(" #ifdef GOAMD64_v3")
+		ctx.ADDQ(operand.U32(1), reg.RAX)
+		ctx.Comment(" #endif")
+		ctx.RET()
+
+		out := printARM64(t, ctx, printer.NewGoRunConfig())
+		// Not ours: the body must survive, matching amd64 where the directive is
+		// inert and both arms are live.
+		if !strings.Contains(out, "ADD $0x00000001") {
+			t.Errorf("a leading-space directive was resolved as if it were live:\n%s", out)
+		}
+	})
+
+	t.Run("SurvivingGOAMD64DefineRejected", func(t *testing.T) {
+		// A #define that reaches the output makes the symbol defined for the
+		// assembler on every build, contradicting this printer's resolution of
+		// it as undefined.
+		ctx := build.NewContext()
+		ctx.Function("forcedefine")
+		ctx.SignatureExpr("func()")
+		ctx.Comment("#define GOAMD64_v3")
+		ctx.RET()
+
+		f, errs := ctx.Result()
+		if errs != nil {
+			t.Fatal(errs)
+		}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Fatal("expected a panic for a surviving GOAMD64 define")
+			}
+			if msg, ok := r.(string); !ok || !strings.Contains(msg, "would disagree") {
+				t.Fatalf("unexpected panic: %v", r)
+			}
+		}()
+		_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+	})
+
+	t.Run("GuardedDefineStillWorks", func(t *testing.T) {
+		// The force-enable idiom s2 ships: the define sits inside an arm this
+		// printer drops, so it never reaches the output and must not panic.
+		ctx := build.NewContext()
+		ctx.Function("guardeddefine")
+		ctx.SignatureExpr("func()")
+		ctx.Comment("#ifdef GOAMD64_v4")
+		ctx.Comment("#define GOAMD64_v3")
+		ctx.Comment("#endif")
+		ctx.RET()
+
+		out := printARM64(t, ctx, printer.NewGoRunConfig())
+		if strings.Contains(out, "GOAMD64_v3") {
+			t.Errorf("a define inside a dead arm reached the output:\n%s", out)
+		}
+	})
+}

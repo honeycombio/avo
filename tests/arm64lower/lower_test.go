@@ -1017,3 +1017,25 @@ func TestQWidthImmediates(t *testing.T) {
 		}
 	})
 }
+
+// TestCmpLIntMin covers the one immediate where the CMN rewrite is invalid.
+// Subtracting a negative is adding its magnitude, but negating INT32_MIN gives
+// 2^31, which as a 32-bit addend is INT32_MIN again -- so the arm64 side would
+// add what x86 subtracts. The overflow flag then disagrees on every input and
+// all four signed conditions flip, while the unsigned ones look fine.
+func TestCmpLIntMin(t *testing.T) {
+	for _, x := range []uint64{
+		0, 1, 0x7fffffff, 0x80000000, 0xffffffff, 0xffffffff80000000, 1 << 63,
+	} {
+		a, b := int32(uint32(x)), int32(-2147483648)
+		want := uint64(0)
+		for i, cond := range []bool{a < b, a >= b, a > b, a <= b} {
+			if cond {
+				want |= 1 << uint(i)
+			}
+		}
+		if got := CmpLIntMin(x); got != want {
+			t.Errorf("CmpLIntMin(%#x) = %#04b, want %#04b (bits are LT,GE,GT,LE)", x, got, want)
+		}
+	}
+}

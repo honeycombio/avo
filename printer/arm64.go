@@ -2,6 +2,7 @@ package printer
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -25,7 +26,7 @@ import (
 // Design:
 //
 //   - Registers: avo allocated physical x86 GP registers. We remap by physical
-//     index to a fixed arm64 register (RAX->R0, RCX->R1, ...), reserving R14/R15
+//     index to a fixed arm64 register (RAX->R0, RCX->R1, ...), reserving R15/R16
 //     as scratch for address computation, immediate-to-memory stores and
 //     memory-destination read-modify-write. Vector (XMM) registers map by index
 //     to V registers. Pseudo registers (FP/SB/SP) pass through unchanged.
@@ -74,16 +75,21 @@ type arm64 struct {
 // NewARM64Asm constructs a printer for writing Go arm64 assembly files by
 // lowering an amd64 avo instruction stream. EXPERIMENTAL.
 //
-// Preprocessor directives are assumed to be live in BOTH outputs. avo emits
-// them as comments and klauspost/compress rewrites "\t// #" back to "#" in a
-// postprocessing step, which is the pipeline this printer is built for: the
-// GOAMD64 conditionals are resolved here (only the arm the arm64 build takes is
-// emitted), and any other directive is treated as a control-flow boundary that
-// the flag, constant and address analyses stop at. Without that rewrite the
-// directives stay inert comments on the amd64 side while the GOAMD64 arms are
-// still resolved on the arm64 side, so the two outputs would no longer
-// correspond; and a program whose directives never go live pays for barriers it
-// does not need.
+// Preprocessor directives come with a caveat the caller must satisfy. avo emits
+// them as comments, so they are inert until something rewrites "\t// #" back to
+// "#". This printer resolves GOAMD64 conditionals on the assumption that the
+// rewrite happens to BOTH outputs: only the arm the arm64 build takes is
+// emitted, and any other directive becomes a boundary the flag and constant
+// analyses stop at.
+//
+// If a generator emits directives and the amd64 output is NOT rewritten, the two
+// sides disagree -- amd64 runs both arms of a conditional this printer already
+// resolved -- and nothing here can detect it. Note that klauspost/compress
+// currently applies that rewrite only in s2, which generates amd64 only; zstd,
+// the one generator using -arch amd64,arm64, has no rewrite step and emits no
+// directives. So the assumption holds there by vacuity rather than by
+// construction, and the first directive added to a zstd generator needs the
+// rewrite added with it.
 //
 // An unsupported instruction or operand form aborts generation with a panic
 // rather than emitting assembly that differs from the amd64 original, so a
@@ -403,11 +409,18 @@ func (c *goamd64Cond) consume(lines []string) bool {
 // that an exact-string match would miss entirely -- and missing one means both
 // arms of a conditional get resolved as though it were not there.
 func normalizeDirective(line string) string {
-	d := strings.TrimSpace(line)
-	if !strings.HasPrefix(d, "#") {
-		return d
+	// Anchored to the RAW line, deliberately. A directive only becomes live
+	// because the postprocessing step rewrites "\t// #" back to "#", and that
+	// match is exact: a line with a space BEFORE the '#' is not rewritten and
+	// stays an inert comment on the amd64 side. Trimming leading space here
+	// would claim such a line as ours and resolve the conditional on arm64 while
+	// amd64 ran both arms -- the printer being more permissive than the rewrite
+	// it depends on. Space AFTER the '#' is different: the assembler tokenizes
+	// the '#' separately, so "# ifdef" really is live, and is normalized below.
+	if !strings.HasPrefix(line, "#") {
+		return ""
 	}
-	return "#" + strings.TrimSpace(d[1:])
+	return "#" + strings.TrimSpace(line[1:])
 }
 
 // liveNodes resolves the GOAMD64 conditionals up front, returning only the nodes
@@ -430,6 +443,9 @@ func liveNodes(nodes []ir.Node) []ir.Node {
 		if !pp.active() {
 			continue
 		}
+		if c, ok := n.(*ir.Comment); ok {
+			checkNoGOAMD64Define(c)
+		}
 		out = append(out, n)
 	}
 	// An owned conditional left open swallows the rest of the function --
@@ -443,6 +459,30 @@ func liveNodes(nodes []ir.Node) []ir.Node {
 		}
 	}
 	return out
+}
+
+// checkNoGOAMD64Define refuses a surviving #define or #undef of a GOAMD64
+// symbol.
+//
+// This evaluator resolves every "#ifdef GOAMD64_*" as undefined, which is right
+// for the toolchain's own symbols -- but the assembler also honours symbols
+// defined in the file. A #define that survives into the output makes one of
+// them defined on every build, including the baseline, so the amd64 side takes
+// an arm this printer already resolved as dead. A define inside an arm we drop
+// is fine and is not seen here, which keeps the guarded force-enable idiom
+// working; it is the unguarded one that has to be loud.
+func checkNoGOAMD64Define(c *ir.Comment) {
+	for _, line := range c.Lines {
+		d := normalizeDirective(line)
+		fields := strings.Fields(d)
+		if len(fields) < 2 {
+			continue
+		}
+		if (fields[0] == "#define" || fields[0] == "#undef") && strings.HasPrefix(fields[1], "GOAMD64_") {
+			panic(fmt.Sprintf("arm64: %q survives into the output, but this printer resolves "+
+				"GOAMD64 conditionals as undefined; the two would disagree", strings.TrimSpace(d)))
+		}
+	}
 }
 
 // zeroSelf lowers x86's "XOR r, r" zeroing idiom. The register is cleared with
@@ -1711,7 +1751,17 @@ func (p *arm64) lowerCompare(cmp, cmn string, a, b operand.Op, width int) {
 	}
 	if imm, ok := immOf(b); ok {
 		aReg := p.valRegW(a, width)
-		if neg, val := negImm(imm); neg {
+		// "CMP a, -b" becomes "CMN a, b" because subtracting a negative is
+		// adding its magnitude -- but only while that magnitude is still
+		// representable as a positive number at the compare width. At the
+		// signed minimum it is not: negating INT32_MIN gives 2^31, which as a
+		// 32-bit addend is INT32_MIN again, so arm64 would add -2^31 where x86
+		// subtracts it. N, Z and C survive that (same result bits, nonzero
+		// addend) but V is computed from a different true value and comes out
+		// inverted on every input, flipping all four signed conditions. Emit the
+		// literal compare instead; the assembler materializes the immediate and
+		// uses SUBS, which is exact.
+		if neg, val := negImm(imm); neg && !(width == 4 && val >= 1<<31) {
 			p.emit("%s $%d, %s", cmn, val, aReg)
 			return
 		}
@@ -1910,6 +1960,13 @@ func negImm(imm string) (bool, int) {
 		return false, 0
 	}
 	if v < 0 {
+		if v == math.MinInt64 {
+			// Negating this yields itself, so the caller would rewrite a compare
+			// against the minimum into a compare against the minimum with the
+			// opposite sense. Unreachable through avo's imm32 forms, but the
+			// value is cheap to refuse and expensive to get wrong.
+			return false, 0
+		}
 		return true, -v
 	}
 	return false, 0

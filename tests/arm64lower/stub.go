@@ -270,6 +270,8 @@ func MovQBit31Mem(p *uint64)
 
 func MovQBit31Reg() uint64
 
+func CmpLIntMin(x uint64) uint64
+
 func IncQ(x uint64) uint64
 
 func DecL(x uint64) uint64
