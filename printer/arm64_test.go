@@ -430,73 +430,47 @@ func TestARM64NestedForeignConditional(t *testing.T) {
 	}
 }
 
-// TestARM64ForeignDirectiveResetsCaches checks that the analyses carrying state
-// along a straight line stop at a preprocessor directive this printer does not
-// evaluate, the same way they stop at a label.
+// TestARM64ConstWindowStopsAtDirective checks that the constant window does not
+// carry a folded value across a preprocessor directive this printer cannot
+// evaluate. If the MOV that established the constant sits inside an arm the
+// assembler later drops, a fold emitted after the #endif is unconditional and
+// wrong.
 //
-// Both caches record something an earlier instruction established. If that
-// instruction sits inside a conditional arm, the assembler may drop it while the
-// state it left behind survives into unconditional code -- a constant folded
-// from a MOV that was never assembled, or an address reused from an ADD that was
-// never executed.
-func TestARM64ForeignDirectiveResetsCaches(t *testing.T) {
-	t.Run("ConstWindow", func(t *testing.T) {
-		ctx := build.NewContext()
-		ctx.Function("cw")
-		ctx.SignatureExpr("func()")
-		ctx.MOVQ(operand.U64(5), reg.RCX)
-		ctx.Comment("#ifdef FOO")
-		ctx.MOVQ(operand.U64(9), reg.RCX)
-		ctx.Comment("#endif")
-		ctx.SHLXQ(reg.RCX, reg.RAX, reg.RAX)
-		ctx.RET()
+// The address cache used to need the same guard and had its own subtest here.
+// It is gone: it bought two instructions across the whole of zstd and huff0,
+// because almost every access folds into the instruction and never materializes
+// an address, and it cost two silent miscompiles. The constant window stays --
+// it is not merely an optimization. It is the only path that implements x86's
+// saturating semantics for BZHI/BEXTR counts >= 64; deleting it turned correct
+// programs into wrong ones, which the differential suite caught on arm64.
+func TestARM64ConstWindowStopsAtDirective(t *testing.T) {
+	for _, c := range []struct{ name, open, close string }{
+		{"Plain", "#ifdef FOO", "#endif"},
+		// Go's assembler tokenizes the '#' separately, so this is live too.
+		{"Spaced", "# ifdef FOO", "# endif"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("cw")
+			ctx.SignatureExpr("func()")
+			ctx.MOVQ(operand.U64(5), reg.RCX)
+			ctx.Comment(c.open)
+			ctx.MOVQ(operand.U64(9), reg.RCX)
+			ctx.Comment(c.close)
+			ctx.SHLXQ(reg.RCX, reg.RAX, reg.RAX)
+			ctx.RET()
 
-		out := printARM64(t, ctx, printer.NewGoRunConfig())
-		// Either folded constant would be wrong: $9 came from inside the arm,
-		// and $5 assumes the arm was not taken. The shift must read the register.
-		if strings.Contains(out, "LSL $9") || strings.Contains(out, "LSL $5") {
-			t.Errorf("constant folded across a preprocessor directive:\n%s", out)
-		}
-	})
-
-	t.Run("AddressCache", func(t *testing.T) {
-		ctx := build.NewContext()
-		ctx.Function("ac")
-		ctx.SignatureExpr("func()")
-		m := operand.Mem{Base: reg.RSI, Index: reg.RDI, Scale: 4, Disp: 8}
-		ctx.Comment("#ifdef FOO")
-		ctx.MOVQ(m, reg.RAX) // seeds the cache inside the arm
-		ctx.Comment("#endif")
-		ctx.MOVQ(m, reg.RBX) // must not reuse it
-		ctx.RET()
-
-		out := printARM64(t, ctx, printer.NewGoRunConfig())
-		// The address is materialized with an ADD; there must be one after the
-		// directive, not just the one inside the arm.
-		if n := strings.Count(out, "ADD "); n < 2 {
-			t.Errorf("address cache survived a preprocessor directive (%d ADDs, want 2):\n%s", n, out)
-		}
-	})
-
-	t.Run("SpacedDirective", func(t *testing.T) {
-		// Go's assembler accepts a space after the '#', so this is a live
-		// conditional that a keyword match would miss.
-		ctx := build.NewContext()
-		ctx.Function("sp")
-		ctx.SignatureExpr("func()")
-		ctx.MOVQ(operand.U64(5), reg.RCX)
-		ctx.Comment("# ifdef FOO")
-		ctx.MOVQ(operand.U64(9), reg.RCX)
-		ctx.Comment("# endif")
-		ctx.SHLXQ(reg.RCX, reg.RAX, reg.RAX)
-		ctx.RET()
-
-		out := printARM64(t, ctx, printer.NewGoRunConfig())
-		if strings.Contains(out, "LSL $9") || strings.Contains(out, "LSL $5") {
-			t.Errorf("constant folded across a spaced preprocessor directive:\n%s", out)
-		}
-	})
+			out := printARM64(t, ctx, printer.NewGoRunConfig())
+			// Either folded constant would be wrong: $9 came from inside the arm,
+			// $5 assumes the arm was not taken. The shift must read the register.
+			if strings.Contains(out, "LSL $9") || strings.Contains(out, "LSL $5") {
+				t.Errorf("constant folded across a preprocessor directive:\n%s", out)
+			}
+		})
+	}
 }
+
+// dispatch loop, and tests here that fail when that barrier is removed.
 
 // TestARM64NoProducerRejected checks that a flag consumer with no producer
 // anywhere in the function fails generation rather than branching on whatever

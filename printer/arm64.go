@@ -69,19 +69,6 @@ type arm64 struct {
 	constReg string
 	constVal int64
 	constOK  bool
-
-	// Cached effective address: scratchAddr currently holds addrBase +
-	// addrIndex*addrScale, so a later access to the same base/index differing
-	// only in displacement can reuse it instead of recomputing the ADD. x86's
-	// addressing lets one instruction do what arm64 needs two for, and
-	// generators lean on that heavily (a load at (base)(idx) followed by one at
-	// 8(base)(idx) is the common shape). Invalidated aggressively: by any
-	// instruction that may write scratchAddr, by writes to the base or index
-	// register, and at every label.
-	addrBase  string
-	addrIndex string
-	addrScale uint8
-	addrOK    bool
 }
 
 // NewARM64Asm constructs a printer for writing Go arm64 assembly files by
@@ -277,12 +264,10 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	setflags := flagProducers(nodes)
 	subwordSafe := subwordSafeEqNe(nodes)
 	p.constOK = false
-	p.addrOK = false
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
 			p.constOK = false
-			p.addrOK = false // control-flow join: the cache may not hold on every edge
 			p.flush()
 			p.ensureclear()
 			p.Printf("%s:\n", n)
@@ -301,7 +286,6 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 				// it, and how a materialized address outlived the ADD that built
 				// it.
 				p.constOK = false
-				p.addrOK = false
 			}
 			for _, line := range n.Lines {
 				p.Printf("\t// %s\n", line)
@@ -330,7 +314,6 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 				p.lower(n, setflags[idx], subwordSafe[idx])
 			}
 			p.trackConst(n)
-			p.invalidateAddrFor(n)
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
 			}
@@ -481,46 +464,8 @@ func (p *arm64) emit(format string, args ...interface{}) {
 	if i := strings.IndexByte(line, ' '); i >= 0 {
 		op, operands = line[:i], line[i+1:]
 	}
-	// The lowering writes the destination last, so scratchAddr appearing there
-	// means this instruction may overwrite the cached address. A store's address
-	// operand also lands last, but renders as "(R15)" or "8(R15)" rather than a
-	// bare register, so it does not match and the cache is correctly kept.
-	if p.addrOK && lastOperandIs(operands, scratchAddr) {
-		p.addrOK = false
-	}
 	p.pending = append(p.pending, [2]string{op, operands})
 	p.clear = false
-}
-
-// lastOperandIs reports whether the final comma-separated operand is exactly
-// the named register.
-func lastOperandIs(operands, name string) bool {
-	if operands == "" {
-		return false
-	}
-	last := operands
-	if i := strings.LastIndex(operands, ","); i >= 0 {
-		last = operands[i+1:]
-	}
-	return strings.TrimSpace(last) == name
-}
-
-// invalidateAddrFor drops the cached effective address if the instruction wrote
-// either of the registers it was computed from.
-func (p *arm64) invalidateAddrFor(in *ir.Instruction) {
-	if !p.addrOK {
-		return
-	}
-	for _, out := range in.Outputs {
-		r, ok := out.(reg.Register)
-		if !ok {
-			continue
-		}
-		if n := rename(r); n == p.addrBase || n == p.addrIndex {
-			p.addrOK = false
-			return
-		}
-	}
 }
 
 // flush writes the buffered instructions with operands aligned to a common
@@ -772,24 +717,17 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 		return fmt.Sprintf("(%s)(%s<<%d)", base, index, sh)
 	}
 
-	// Otherwise the effective address goes into scratchAddr. Reuse it when it
-	// already holds this base+index from an earlier access.
-	if p.addrOK && p.addrBase == base && p.addrIndex == index && p.addrScale == m.Scale {
-		if m.Disp != 0 {
-			return fmt.Sprintf("%d(%s)", m.Disp, scratchAddr)
-		}
-		return fmt.Sprintf("(%s)", scratchAddr)
-	}
+	// Otherwise the effective address is computed into scratchAddr, fresh for
+	// each access. An earlier version cached it across instructions so a second
+	// access to the same base and index could reuse it. That saved two
+	// instructions across the whole of zstd and huff0 -- most accesses fold into
+	// the instruction and never materialize an address at all -- and cost two
+	// silent miscompiles, because the cache had to be invalidated at every
+	// boundary this printer does not otherwise model.
 	if sh == 0 {
 		p.emit("ADD %s, %s, %s", index, base, scratchAddr)
 	} else {
 		p.emit("ADD %s<<%d, %s, %s", index, sh, base, scratchAddr)
-	}
-	// The ADD above invalidated any previous cache via emit; record the new one.
-	// A base or index that is itself scratchAddr would be destroyed by the ADD,
-	// so never cache those.
-	if base != scratchAddr && index != scratchAddr {
-		p.addrBase, p.addrIndex, p.addrScale, p.addrOK = base, index, m.Scale, true
 	}
 	if m.Disp != 0 {
 		return fmt.Sprintf("%d(%s)", m.Disp, scratchAddr)
