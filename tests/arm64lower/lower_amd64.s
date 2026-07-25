@@ -2221,8 +2221,8 @@ TEXT ·Prop63(SB), NOSPLIT, $0-24
 // func MovbzxHigh(x uint64) uint64
 TEXT ·MovbzxHigh(SB), NOSPLIT, $0-16
 	MOVQ    x+0(FP), AX
-	MOVBLZX AH, AX
-	MOVQ    AX, ret+8(FP)
+	MOVBLZX AH, BX
+	MOVQ    BX, ret+8(FP)
 	RET
 
 // func CmovL32(x uint64, y uint64) uint64

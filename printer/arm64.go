@@ -252,48 +252,26 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	p.Printf(", %s\n", textsize(f))
 
 	p.clear = true
-	nodes := f.Nodes
+	nodes := liveNodes(f.Nodes)
 	setflags := flagProducers(nodes)
 	subwordSafe := subwordSafeEqNe(nodes)
 	p.constOK = false
 	p.addrOK = false
-	var pp goamd64Cond
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
-			if !pp.active() {
-				// Inside a dead arm: emitting the label while dropping the
-				// instructions under it would let a jump land on the code that
-				// follows the conditional.
-				break
-			}
 			p.constOK = false
 			p.addrOK = false // control-flow join: the cache may not hold on every edge
 			p.flush()
 			p.ensureclear()
 			p.Printf("%s:\n", n)
 		case *ir.Comment:
-			// Generators emit C preprocessor directives as comments (a later
-			// pass strips the "// "). Evaluate the GOAMD64 ones here rather than
-			// passing them through: GOAMD64_* is never defined for an arm64
-			// build, so the guarded arm is dead, and emitting it would either
-			// duplicate work or -- if the directives are never un-commented --
-			// silently run both arms.
-			if pp.consume(n.Lines) {
-				break
-			}
-			if !pp.active() {
-				break
-			}
 			p.flush()
 			p.ensureclear()
 			for _, line := range n.Lines {
 				p.Printf("\t// %s\n", line)
 			}
 		case *ir.Instruction:
-			if !pp.active() {
-				break
-			}
 			switch {
 			case n.Opcode == "JMP":
 				p.emit("JMP %s", n.Operands[0].Asm())
@@ -320,30 +298,31 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 
 // goamd64Cond evaluates #ifdef/#ifndef/#else/#endif directives that test a
 // GOAMD64_* symbol, which is never defined when building for arm64. Directives
-// naming anything else are left alone and passed through as comments, since
-// this cannot know their truth value.
+// naming anything else cannot be evaluated here, so their arms are passed
+// through unchanged; they are still tracked, because an #endif has to close the
+// conditional it actually belongs to.
 type goamd64Cond struct {
-	// stack holds one entry per open GOAMD64 conditional: whether the arm
-	// currently being read is the live one.
-	stack []bool
-	// depth counts open conditionals this evaluator is NOT tracking, so their
-	// #else/#endif are not mistaken for ones it owns.
-	depth int
+	stack []ppFrame
 }
 
-// active reports whether the current position is inside a live arm.
+// ppFrame is one open conditional. owned marks the ones this evaluator decides;
+// live is meaningful only for those.
+type ppFrame struct {
+	owned, live bool
+}
+
+// active reports whether the current position sits inside a live arm.
 func (c *goamd64Cond) active() bool {
-	for _, live := range c.stack {
-		if !live {
+	for _, f := range c.stack {
+		if f.owned && !f.live {
 			return false
 		}
 	}
 	return true
 }
 
-// consume interprets a comment's lines as preprocessor directives, returning
-// true if they were directives this evaluator handles (and so should not be
-// printed).
+// consume interprets a comment's lines as preprocessor directives, reporting
+// whether they belong to this evaluator (and so should not be printed).
 func (c *goamd64Cond) consume(lines []string) bool {
 	handled := false
 	for _, line := range lines {
@@ -354,28 +333,50 @@ func (c *goamd64Cond) consume(lines []string) bool {
 		fields := strings.Fields(d)
 		switch fields[0] {
 		case "#ifdef", "#ifndef":
-			if len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_") {
-				// Undefined on arm64: #ifdef selects the else arm, #ifndef the then arm.
-				c.stack = append(c.stack, fields[0] == "#ifndef")
-				handled = true
-				continue
-			}
-			c.depth++
+			owned := len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_")
+			// Undefined on arm64: #ifdef selects the else arm, #ifndef the then arm.
+			c.stack = append(c.stack, ppFrame{owned: owned, live: !owned || fields[0] == "#ifndef"})
+			handled = handled || owned
+		case "#if":
+			c.stack = append(c.stack, ppFrame{}) // not evaluated, tracked for nesting
 		case "#else":
-			if c.depth == 0 && len(c.stack) > 0 {
-				c.stack[len(c.stack)-1] = !c.stack[len(c.stack)-1]
+			if n := len(c.stack); n > 0 && c.stack[n-1].owned {
+				c.stack[n-1].live = !c.stack[n-1].live
 				handled = true
 			}
 		case "#endif":
-			if c.depth > 0 {
-				c.depth--
-			} else if len(c.stack) > 0 {
-				c.stack = c.stack[:len(c.stack)-1]
-				handled = true
+			// Always closes the innermost conditional, whoever owns it.
+			if n := len(c.stack); n > 0 {
+				owned := c.stack[n-1].owned
+				c.stack = c.stack[:n-1]
+				handled = handled || owned
 			}
 		}
 	}
 	return handled
+}
+
+// liveNodes resolves the GOAMD64 conditionals up front, returning only the nodes
+// that will actually be emitted. Doing this before anything else matters because
+// the flag analyses recover producer/consumer links by scanning the node list:
+// left in place, a markable producer inside a dead arm could absorb the
+// flag-setting mark that a live producer before the conditional needed, leaving
+// a consumer reading stale flags. Dropping dead arms here also removes their
+// labels, so a jump into one becomes an assembler error rather than a silent
+// landing on whatever follows the conditional.
+func liveNodes(nodes []ir.Node) []ir.Node {
+	var pp goamd64Cond
+	out := make([]ir.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if c, ok := n.(*ir.Comment); ok && pp.consume(c.Lines) {
+			continue
+		}
+		if !pp.active() {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // zeroSelf lowers x86's "XOR r, r" zeroing idiom. The register is cleared with
@@ -694,30 +695,41 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	case "MOVWQZX": // load/extend uint16, zero-extend
 		p.emit("MOVHU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVBQZX", "MOVBQSX", "MOVBLSX", "MOVBLZX":
-		// A high-byte source (AH/BH/CH/DH) names bits 15:8, but it renames to the
-		// same arm64 register as the low byte, so the plain load would silently
-		// read bits 7:0. Extract the right field instead.
+		// A high-byte source (AH/BH/CH/DH) names bits 15:8 but renames to the
+		// same arm64 register as the low byte, so a plain load would read 7:0.
+		// Extracting the right field is only correct where x86 can express the
+		// same thing, which is narrower than it looks: any encoding carrying a
+		// REX prefix redefines that register slot as SPL, so the amd64 side
+		// silently reads the stack pointer's low byte instead. Refuse those
+		// rather than have the two architectures compute different values from
+		// one avo program.
 		if isHighByte(ops[0]) {
+			if i.Opcode == "MOVBQZX" || i.Opcode == "MOVBQSX" {
+				panic(fmt.Sprintf("arm64: %s from a high-byte register cannot be expressed on x86-64: "+
+					"the 64-bit destination forces a REX prefix, which renames that operand to SPL", i.Opcode))
+			}
+			if ph, ok := ops[1].(reg.Physical); ok && ph.PhysicalIndex() >= 8 {
+				panic(fmt.Sprintf("arm64: %s from a high-byte register into an extended register (index %d) "+
+					"needs a REX prefix on x86-64, which renames the source to SPL", i.Opcode, ph.PhysicalIndex()))
+			}
 			ext := "UBFX"
-			if i.Opcode == "MOVBQSX" || i.Opcode == "MOVBLSX" {
+			if i.Opcode == "MOVBLSX" {
 				ext = "SBFX"
 			}
 			d := operandReg(ops[1])
 			p.emit("%s $8, %s, $8, %s", ext, rename(ops[0].(reg.Register)), d)
-			if i.Opcode == "MOVBLSX" || i.Opcode == "MOVBLZX" {
-				p.emit("MOVWU %s, %s", d, d) // 32-bit destination: clear the top half
+			if i.Opcode == "MOVBLSX" {
+				p.emit("MOVWU %s, %s", d, d) // sign-extended: clear the upper half
 			}
 			return
 		}
 		switch i.Opcode {
-		case "MOVBQZX":
+		case "MOVBQZX", "MOVBLZX":
+			// Zero-extending a byte already leaves the upper bits clear, so the
+			// 32-bit form needs no extra truncation.
 			p.emit("MOVBU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 		case "MOVBQSX":
 			p.emit("MOVB %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
-		case "MOVBLZX":
-			d := operandReg(ops[1])
-			p.emit("MOVBU %s, %s", p.srcAsm(ops[0]), d)
-			p.emit("MOVWU %s, %s", d, d)
 		default: // MOVBLSX
 			d := operandReg(ops[1])
 			p.emit("MOVB %s, %s", p.srcAsm(ops[0]), d)

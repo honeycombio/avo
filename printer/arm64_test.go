@@ -325,3 +325,73 @@ func TestARM64AddCarryGuard(t *testing.T) {
 	}()
 	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
 }
+
+// TestARM64HighByteEncodability checks that byte extends from a high-byte
+// register are refused where x86-64 cannot encode them. Any REX-carrying form
+// renames that operand to SPL, so emitting a faithful arm64 extract would make
+// the two architectures compute different values from one program.
+func TestARM64HighByteEncodability(t *testing.T) {
+	cases := []struct {
+		name  string
+		build func(ctx *build.Context)
+		want  string
+	}{
+		{
+			name:  "64-bit destination",
+			build: func(ctx *build.Context) { ctx.MOVBQZX(reg.AH, reg.RBX) },
+			want:  "forces a REX prefix",
+		},
+		{
+			name:  "extended destination",
+			build: func(ctx *build.Context) { ctx.MOVBLZX(reg.AH, reg.R9L) },
+			want:  "needs a REX prefix",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("hb")
+			ctx.SignatureExpr("func()")
+			c.build(ctx)
+			ctx.RET()
+			f, errs := ctx.Result()
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("expected a panic")
+				}
+				if msg, ok := r.(string); !ok || !strings.Contains(msg, c.want) {
+					t.Fatalf("unexpected panic: %v", r)
+				}
+			}()
+			_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+		})
+	}
+}
+
+// TestARM64NestedForeignConditional checks that an #endif closes the innermost
+// conditional even when a GOAMD64 one is nested inside a directive this printer
+// does not evaluate. Resolving them out of order would drop live code.
+func TestARM64NestedForeignConditional(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("nested")
+	ctx.SignatureExpr("func()")
+	ctx.Comment("#ifdef SOMETHING_ELSE")
+	ctx.Comment("#ifdef GOAMD64_v3")
+	ctx.MOVQ(operand.U64(1), reg.RAX) // dead on arm64
+	ctx.Comment("#endif")
+	ctx.MOVQ(operand.U64(2), reg.RCX) // live: inside the foreign conditional only
+	ctx.Comment("#endif")
+	ctx.RET()
+
+	out := printARM64(t, ctx, printer.NewGoRunConfig())
+	if strings.Contains(out, "$0x0000000000000001") {
+		t.Errorf("dead GOAMD64 arm was emitted:\n%s", out)
+	}
+	if !strings.Contains(out, "$0x0000000000000002") {
+		t.Errorf("live code after the inner #endif was dropped:\n%s", out)
+	}
+}

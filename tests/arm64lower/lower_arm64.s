@@ -2434,10 +2434,9 @@ TEXT ·Prop63(SB), NOSPLIT, $0-24
 
 // func MovbzxHigh(x uint64) uint64
 TEXT ·MovbzxHigh(SB), NOSPLIT, $0-16
-	MOVD  x+0(FP), R0
-	UBFX  $8, R0, $8, R0
-	MOVWU R0, R0
-	MOVD  R0, ret+8(FP)
+	MOVD x+0(FP), R0
+	UBFX $8, R0, $8, R3
+	MOVD R3, ret+8(FP)
 	RET
 
 // func CmovL32(x uint64, y uint64) uint64
@@ -2486,6 +2485,6 @@ xorself_end:
 
 // func MovLNegImm() uint64
 TEXT ·MovLNegImm(SB), NOSPLIT, $0-8
-	MOVD $4294967295, R0
+	MOVD $0xffffffff, R0
 	MOVD R0, ret+0(FP)
 	RET

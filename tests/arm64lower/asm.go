@@ -693,7 +693,10 @@ func main() {
 	{
 		x := reg.RAX // high-byte access requires AX-DX
 		Load(Param("x"), x)
-		d := GP64()
+		// The destination is pinned low on purpose: an extended register would
+		// force a REX prefix, and REX renames the high-byte source to SPL, so an
+		// allocator-chosen register could silently change what amd64 reads.
+		d := reg.RBX
 		MOVBLZX(x.As8H(), d.As32())
 		Store(d, ReturnIndex(0))
 		RET()
