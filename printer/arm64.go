@@ -64,6 +64,13 @@ type arm64 struct {
 	inTransparent bool
 	transparentOp string
 
+	// The mirror of the above for the producer side: set while lowering an
+	// instruction flagProducers marked as supplying a consumer's flags, with a
+	// count of the flag-writers its lowering emitted.
+	inProducer  bool
+	producerOp  string
+	writerCount int
+
 	// One-instruction constant-tracking window: constReg holds constVal when
 	// constOK and the immediately preceding instruction was "MOVQ/MOVL $imm,
 	// constReg". Any other instruction or a label invalidates it (comments are
@@ -235,6 +242,7 @@ func (p *arm64) header(f *ir.File) {
 }
 
 func (p *arm64) global(g *ir.Global) {
+	checkSingleLine("global symbol", g.Symbol.Name)
 	p.NL()
 	for _, d := range g.Data {
 		a := operand.NewDataAddr(g.Symbol, d.Offset)
@@ -322,6 +330,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 					n.Opcode, n.Suffixes))
 			}
 			p.inTransparent, p.transparentOp = isFlagTransparent(n.Opcode), n.Opcode
+			p.inProducer, p.producerOp, p.writerCount = setflags[idx], n.Opcode, 0
 			switch {
 			case n.Opcode == "JMP":
 				// Only a label target is translatable. A register or memory
@@ -352,7 +361,17 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 			default:
 				p.lower(n, setflags[idx], subwordSafe[idx])
 			}
+			if p.inProducer && p.writerCount != 1 {
+				// The mirror of the transparency check. A producer the analysis
+				// marked must actually supply the flags its consumer reads: none
+				// leaves the branch running on whatever survived, which is the
+				// worst failure available here, and more than one means a second
+				// writer clobbered the first.
+				panic(fmt.Sprintf("arm64: %s was marked as a flag producer but its lowering emitted "+
+					"%d flag-writing instructions, not 1", p.producerOp, p.writerCount))
+			}
 			p.inTransparent, p.transparentOp = false, ""
+			p.inProducer, p.producerOp, p.writerCount = false, "", 0
 			p.trackConst(n)
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
@@ -504,6 +523,9 @@ func (p *arm64) emit(format string, args ...interface{}) {
 	if writes && p.inTransparent {
 		panic(fmt.Sprintf("arm64: lowering %s emitted %s, which writes the condition flags, "+
 			"but isFlagTransparent classifies it as leaving them alone", p.transparentOp, op))
+	}
+	if writes && p.inProducer {
+		p.writerCount++
 	}
 	p.pending = append(p.pending, [2]string{op, operands})
 	p.clear = false
