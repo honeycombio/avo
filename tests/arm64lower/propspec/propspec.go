@@ -222,6 +222,238 @@ var Ops = []Op{
 	},
 }
 
+// MemOp is one step of a random program that touches memory: acc = f(acc, y,
+// mem), possibly writing to mem.
+//
+// Register-only programs leave a whole axis of the lowering untested. A memory
+// operand is not just another source: it is staged through a scratch register,
+// its address may be folded into the instruction or materialized with an ADD,
+// the result of that materialization is cached across instructions, and the
+// load must be issued at the operand's width rather than the register's. Each
+// of those has its own failure mode, and three of the bugs found by review so
+// far lived in exactly that machinery.
+type MemOp struct {
+	Name string
+	// Emit appends the operation. p holds the base address of an 8-element
+	// uint64 array and idx holds an index already masked to 0..3, so any
+	// scaled-index operand stays in bounds.
+	Emit func(acc, y, p, idx reg.GPVirtual)
+	// Ref models Emit's x86 semantics, including any write to mem or to idx.
+	// idx is a pointer because an operation may advance it: an index register
+	// that never changes would let a stale cached address go unnoticed.
+	Ref func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64
+}
+
+// MemOps mixes register and memory operands. Displacements, scaled indices and
+// sub-word widths are all represented, since the address rendering treats them
+// differently: a folded base+index form is only encodable on arm64 under
+// constraints a displacement breaks, and a load wider than its operand can
+// fault at a page boundary even when the value it produces is right.
+var MemOps = []MemOp{
+	{
+		Name: "AddQMemIdx",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			ADDQ(operand.Mem{Base: p, Index: idx, Scale: 8}, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return acc + mem[*idx] },
+	},
+	{
+		Name: "XorQMemIdx",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			XORQ(operand.Mem{Base: p, Index: idx, Scale: 8}, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return acc ^ mem[*idx] },
+	},
+	{
+		Name: "ImulQMemDisp",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			IMULQ(operand.Mem{Base: p, Disp: 16}, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return acc * mem[2] },
+	},
+	{
+		// A 32-bit operand four bytes into the array: the load must take four
+		// bytes, and the result must zero-extend.
+		Name: "MovLMemDisp",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			MOVL(operand.Mem{Base: p, Disp: 4}, acc.As32())
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return uint64(uint32(mem[0] >> 32)) },
+	},
+	{
+		Name: "AddLMemIdx",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			ADDL(operand.Mem{Base: p, Index: idx, Scale: 8}, acc.As32())
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			return uint64(uint32(acc) + uint32(mem[*idx]))
+		},
+	},
+	{
+		// A byte load into the low byte of acc, leaving the rest alone.
+		Name: "MovBMemDisp",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			MOVB(operand.Mem{Base: p, Disp: 1}, acc.As8())
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			return acc&^0xff | mem[0]>>8&0xff
+		},
+	},
+	{
+		Name: "MovWZXMemDisp",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			MOVWQZX(operand.Mem{Base: p, Disp: 2}, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return mem[0] >> 16 & 0xffff },
+	},
+	{
+		Name: "MovLSXMemDisp",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			MOVLQSX(operand.Mem{Base: p, Disp: 8}, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			return uint64(int64(int32(uint32(mem[1]))))
+		},
+	},
+	{
+		// A compare against a memory operand feeding a conditional select: the
+		// flag producer and its consumer are separated by the load the lowering
+		// has to insert.
+		Name: "CmpMemSelect",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			CMPQ(acc, operand.Mem{Base: p, Index: idx, Scale: 8})
+			CMOVQCS(y, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			if acc < mem[*idx] {
+				return y
+			}
+			return acc
+		},
+	},
+	{
+		// Address arithmetic whose result is compared against the base, so the
+		// answer does not depend on where the array happens to live.
+		Name: "LeaIdxOffset",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			t := GP64()
+			LEAQ(operand.Mem{Base: p, Index: idx, Scale: 8, Disp: 8}, t)
+			SUBQ(p, t)
+			MOVQ(t, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return *idx*8 + 8 },
+	},
+	{
+		// Stores: the destination-is-memory path, at two widths. A 32-bit store
+		// must leave the upper half of the destination word untouched.
+		Name: "StoreQIdx",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			MOVQ(acc, operand.Mem{Base: p, Index: idx, Scale: 8})
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			mem[*idx] = acc
+			return acc
+		},
+	},
+	{
+		Name: "StoreLDisp",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			MOVL(acc.As32(), operand.Mem{Base: p, Disp: 24})
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			mem[3] = mem[3]&0xffffffff00000000 | uint64(uint32(acc))
+			return acc
+		},
+	},
+	{
+		// Two accesses to the same base and index in a row, which is what the
+		// address cache is for; the store in between must not let a stale cached
+		// address survive a write to the registers it was built from.
+		Name: "ReadModifyWriteIdx",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			m := operand.Mem{Base: p, Index: idx, Scale: 8}
+			ADDQ(m, acc)
+			MOVQ(acc, m)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			acc += mem[*idx]
+			mem[*idx] = acc
+			return acc
+		},
+	},
+	{
+		// Two accesses through the same base and index registers with a write to
+		// the index between them.
+		//
+		// arm64 can fold a base+index operand into the instruction only when the
+		// scale matches the access width and there is no displacement; anything
+		// else has to be materialized into a scratch register, and that computed
+		// address is cached so a second access can reuse it. This operation
+		// deliberately takes the materializing path twice -- a 4-byte access at
+		// scale 8 -- around a write to the index. If the write does not
+		// invalidate the cache, the second access silently reads the first
+		// address. Nothing else in this vocabulary reaches that path: with a
+		// matching scale everything folds, and the cache is never consulted.
+		Name: "StaleIdxAccess",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			m := operand.Mem{Base: p, Index: idx, Scale: 8}
+			ADDL(m, acc.As32())
+			INCQ(idx)
+			ANDQ(operand.U32(3), idx)
+			ADDL(m, acc.As32())
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			a := uint64(uint32(acc) + uint32(mem[*idx]))
+			*idx = (*idx + 1) & 3
+			return uint64(uint32(a) + uint32(mem[*idx]))
+		},
+	},
+	{
+		// A displacement alongside a scaled index, which also cannot be folded.
+		Name: "AddQMemIdxDisp",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			ADDQ(operand.Mem{Base: p, Index: idx, Scale: 8, Disp: 8}, acc)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			return acc + mem[*idx+1]
+		},
+	},
+	{
+		// Advances the index register, so the next access to the same base uses
+		// a different address. The lowering caches a materialized base+index
+		// address to avoid recomputing it; if a write to either register does
+		// not invalidate that cache, the following access reads the old address
+		// and this is what notices.
+		Name: "AdvanceIdx",
+		Emit: func(acc, y, p, idx reg.GPVirtual) {
+			INCQ(idx)
+			ANDQ(operand.U32(3), idx)
+		},
+		Ref: func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 {
+			*idx = (*idx + 1) & 3
+			return acc
+		},
+	},
+	// Register-only operations are kept in the mix so memory accesses are
+	// interleaved with the register pressure and flag traffic that surrounds
+	// them in real code.
+	{
+		Name: "AddQReg",
+		Emit: func(acc, y, p, idx reg.GPVirtual) { ADDQ(y, acc) },
+		Ref:  func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return acc + y },
+	},
+	{
+		Name: "RolQ11",
+		Emit: func(acc, y, p, idx reg.GPVirtual) { ROLQ(operand.U8(11), acc) },
+		Ref:  func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return bits.RotateLeft64(acc, 11) },
+	},
+	{
+		Name: "SubQReg",
+		Emit: func(acc, y, p, idx reg.GPVirtual) { SUBQ(y, acc) },
+		Ref:  func(acc, y uint64, mem *[8]uint64, idx *uint64) uint64 { return acc - y },
+	},
+}
+
 // Program returns the op indices making up program n. Both the generator and
 // the test call this, so the two always agree without recording anything.
 func Program(n, length int) []int {
@@ -232,6 +464,23 @@ func Program(n, length int) []int {
 	}
 	return out
 }
+
+// MemProgram is Program for the memory-operand vocabulary. The seed is offset
+// so the two families do not generate the same sequences.
+func MemProgram(n, length int) []int {
+	r := rand.New(rand.NewSource(int64(n)*7919 + 104729))
+	out := make([]int, length)
+	for i := range out {
+		out[i] = r.Intn(len(MemOps))
+	}
+	return out
+}
+
+// NumMemPrograms and MemProgramLength size the memory-operand family.
+const (
+	NumMemPrograms   = 32
+	MemProgramLength = 10
+)
 
 // NumPrograms is how many random programs the suite builds.
 const NumPrograms = 64

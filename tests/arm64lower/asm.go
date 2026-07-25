@@ -15,6 +15,7 @@ import (
 	. "github.com/mmcloughlin/avo/build"
 	"github.com/mmcloughlin/avo/operand"
 	"github.com/mmcloughlin/avo/reg"
+	"github.com/mmcloughlin/avo/tests/arm64lower/condspec"
 	"github.com/mmcloughlin/avo/tests/arm64lower/propspec"
 )
 
@@ -682,6 +683,27 @@ func main() {
 		RET()
 	}
 
+	// The memory-operand family. Each program interleaves loads, stores and
+	// register work over one array, so the address rendering, the scratch
+	// staging and the address cache are exercised in combination rather than one
+	// access at a time.
+	for n := 0; n < propspec.NumMemPrograms; n++ {
+		TEXT(fmt.Sprintf("MemProp%d", n), NOSPLIT, "func(x, y uint64, p *[8]uint64) uint64")
+		acc, y, p, idx := GP64(), GP64(), GP64(), GP64()
+		Load(Param("x"), acc)
+		Load(Param("y"), y)
+		Load(Param("p"), p)
+		// A scaled index needs to stay inside the array; masking it here keeps
+		// every generated access in bounds for any input.
+		MOVQ(y, idx)
+		ANDQ(operand.U32(3), idx)
+		for _, op := range propspec.MemProgram(n, propspec.MemProgramLength) {
+			propspec.MemOps[op].Emit(acc, y, p, idx)
+		}
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
+
 	// ---- regression cases for lowering bugs found in review ----
 
 	// MovbzxHigh: a byte-extend from a high-byte source must read bits 15:8. AH
@@ -759,5 +781,400 @@ func main() {
 		RET()
 	}
 
+	// ---- regressions from the operand-form review ----
+	//
+	// Four silent miscompiles, each reachable from an ordinary x86 operand form
+	// that the in-tree generators simply never used.
+
+	// IncLMem/DecLMem: a read-modify-write on a 32-bit memory destination. The
+	// lowering loaded and stored eight bytes around a 32-bit increment, and
+	// since the W-form arithmetic zeroes bits 63:32 of the scratch register, the
+	// store cleared the four bytes FOLLOWING the target word. The second array
+	// element is the witness: it must come back untouched.
+	TEXT("IncLMem", NOSPLIT, "func(p *[2]uint32)")
+	{
+		p := GP64()
+		Load(Param("p"), p)
+		INCL(operand.Mem{Base: p})
+		RET()
+	}
+	TEXT("DecLMem", NOSPLIT, "func(p *[2]uint32)")
+	{
+		p := GP64()
+		Load(Param("p"), p)
+		DECL(operand.Mem{Base: p})
+		RET()
+	}
+	TEXT("IncQMem", NOSPLIT, "func(p *[2]uint64)")
+	{
+		p := GP64()
+		Load(Param("p"), p)
+		INCQ(operand.Mem{Base: p})
+		RET()
+	}
+
+	// CmpBHigh: a byte compare against a high-byte register. AH renames to the
+	// same arm64 register as AL, so the operand has to be extracted from bits
+	// 15:8; masking the renamed register compared the low byte instead. The
+	// inputs are chosen so the two bytes disagree, and disagree in both
+	// directions across the test cases.
+	TEXT("CmpBHigh", NOSPLIT, "func(x uint64) uint64")
+	{
+		x := reg.RAX // high-byte access requires AX-DX
+		Load(Param("x"), x)
+		d := reg.RBX // pinned low: an extended register would force a REX prefix,
+		XORQ(d, d)   // which renames the high-byte source to SPL
+		CMPB(x.As8H(), operand.U8(2))
+		SETEQ(d.As8())
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
+	// MovWLoad: a 16-bit load writes bits 15:0 and leaves the upper 48 alone,
+	// exactly like the register and immediate forms. A bare zero-extending load
+	// is shorter and was what the lowering emitted.
+	TEXT("MovWLoad", NOSPLIT, "func(x uint64, p *uint16) uint64")
+	{
+		x, p, d := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("p"), p)
+		MOVQ(x, d)
+		MOVW(operand.Mem{Base: p}, d.As16())
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
+	// MulXAlias: x86 lets MULX name one register for both destinations and
+	// defines the high half as written second, so the high half is what
+	// survives. Staging the low half and copying it out unconditionally left the
+	// wrong one.
+	TEXT("MulXAlias", NOSPLIT, "func(x, y uint64) uint64")
+	{
+		Load(Param("x"), reg.RSI)
+		Load(Param("y"), reg.RDX)        // implicit MULX factor
+		MULXQ(reg.RSI, reg.RAX, reg.RAX) // both destinations alias
+		Store(reg.RAX, ReturnIndex(0))
+		RET()
+	}
+
+	// TestQImm: the canonical immediate-test form, which x86 writes with the
+	// immediate first. The lowering only accepted an immediate in the second
+	// position, a place x86 never puts it.
+	bin("TestQImm", func(x, y, d reg.GPVirtual) {
+		XORQ(d, d)
+		TESTQ(operand.U32(0x10), x)
+		SETEQ(d.As8())
+	})
+
+	// FlagsAcrossTransparent: instructions that preserve EFLAGS on x86 must not
+	// break the link between a compare and the branch that reads it. These four
+	// used to abort generation; the risk in allowing them is the opposite one,
+	// so the branch outcome is checked rather than just that it compiles.
+	TEXT("FlagsAcrossTransparent", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a, b, res, t := GP64(), GP64(), GP64(), GP64()
+		Load(Param("a"), a)
+		Load(Param("b"), b)
+		CMPQ(a, b)
+		MOVQ(a, t)
+		NOTQ(t) // flag-preserving on x86
+		BSWAPL(t.As32())
+		XCHGQ(t, res)
+		JEQ(operand.LabelRef("fat_eq"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("fat_end"))
+		Label("fat_eq")
+		MOVQ(operand.U64(1), res)
+		Label("fat_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
+	// ---- regressions from the flags/control-flow review ----
+
+	// XorlSign: XORL is a 32-bit operation, so a sign test after it must read
+	// bit 31. Lowering it at 64-bit width synthesized a 64-bit TST, whose N bit
+	// reads bit 63 -- always zero after a zero-extending EORW -- so the branch
+	// was never taken. The inputs make bit 31 of x^y the deciding bit.
+	TEXT("XorlSign", NOSPLIT, "func(x, y uint64) uint64")
+	{
+		x, y, res := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("y"), y)
+		XORL(y.As32(), x.As32())
+		JMI(operand.LabelRef("xorlsign_neg"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("xorlsign_end"))
+		Label("xorlsign_neg")
+		MOVQ(operand.U64(1), res)
+		Label("xorlsign_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
+	// XorlMem: the same width bug on the memory path, where it corrupted the
+	// adjacent word rather than a branch. Second element is the witness.
+	TEXT("XorlMem", NOSPLIT, "func(p *[2]uint32, v uint64)")
+	{
+		p, v := GP64(), GP64()
+		Load(Param("p"), p)
+		Load(Param("v"), v)
+		XORL(v.As32(), operand.Mem{Base: p})
+		RET()
+	}
+
+	// ---- filling out the dispatch table ----
+	//
+	// Everything below exists because TestOpcodeDispatchIsCovered found it
+	// reachable in the printer's dispatch switch but absent from the generated
+	// amd64 assembly -- lowered, but never executed against a reference. The
+	// in-tree generators exercise about two thirds of the switch; the rest was
+	// only as good as the review that wrote it.
+
+	un("IncQ", func(x, d reg.GPVirtual) { MOVQ(x, d); INCQ(d) })
+	un("DecL", func(x, d reg.GPVirtual) { MOVQ(x, d); DECL(d.As32()) })
+	un("ShrL5", func(x, d reg.GPVirtual) { MOVQ(x, d); SHRL(operand.U8(5), d.As32()) })
+	un("SxWQ", func(x, d reg.GPVirtual) { MOVWQSX(x.As16(), d) })
+	// BSR's result is architecturally undefined for a zero input, so the test
+	// feeds it non-zero values only.
+	un("BsrQ", func(x, d reg.GPVirtual) { BSRQ(x, d) })
+	un("BtsQ5", func(x, d reg.GPVirtual) {
+		MOVQ(x, d)
+		n := GP64()
+		MOVQ(operand.U64(5), n)
+		BTSQ(n, d)
+	})
+
+	// MOVLQZX has no register-to-register encoding on x86 -- zero-extending a
+	// register is what a plain MOVL does -- so it only ever appears as a load,
+	// and the lowering must use a 4-byte one.
+	TEXT("ZxLQ", NOSPLIT, "func(p *uint64) uint64")
+	{
+		p, d := GP64(), GP64()
+		Load(Param("p"), p)
+		MOVLQZX(operand.Mem{Base: p}, d)
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
+	// MOVW writes only the low 16 bits and leaves the rest of the destination
+	// alone -- the same partial-register shape that produced silent miscompiles
+	// at byte width.
+	bin("MovW", func(x, y, d reg.GPVirtual) { MOVQ(x, d); MOVW(y.As16(), d.As16()) })
+
+	// LEAQ with a full base+index*scale+displacement operand. Only the 32-bit
+	// form had coverage, and the two take different paths through the address
+	// rendering.
+	bin("LeaQ", func(x, y, d reg.GPVirtual) {
+		LEAQ(operand.Mem{Base: x, Index: y, Scale: 8, Disp: -24}, d)
+	})
+
+	// TESTQ/TESTB discard the AND and keep only its flags. TESTB is a sub-word
+	// test, which the lowering accepts only when every consumer is EQ/NE.
+	bin("TestQZero", func(x, y, d reg.GPVirtual) {
+		XORQ(d, d)
+		TESTQ(x, y)
+		SETEQ(d.As8())
+	})
+	bin("TestBZero", func(x, y, d reg.GPVirtual) {
+		XORQ(d, d)
+		TESTB(x.As8(), y.As8())
+		SETEQ(d.As8())
+	})
+
+	// MOVOA is the aligned 128-bit move. Only the register-to-register form is
+	// generated: the memory form faults on x86 unless the address is 16-byte
+	// aligned, which Go does not guarantee for a heap [16]byte.
+	TEXT("VecCopyReg", NOSPLIT, "func(dst, src *[16]byte)")
+	{
+		dst, src := GP64(), GP64()
+		Load(Param("dst"), dst)
+		Load(Param("src"), src)
+		a, b := XMM(), XMM()
+		MOVOU(operand.Mem{Base: src}, a)
+		MOVOA(a, b)
+		MOVOU(b, operand.Mem{Base: dst})
+		RET()
+	}
+
+	// ---- condition-code coverage ----
+	//
+	// One function per consumer family evaluates every condition in condspec
+	// after the same compare and packs the results into a bitmask, so the three
+	// families cover the whole translation table with three symbols and no
+	// per-condition glue. Before this, most conditions had never been executed
+	// in some family, and the carry conditions -- where the two architectures
+	// disagree most -- were the thinnest covered of all.
+
+	TEXT("SetAll", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a, b, acc := GP64(), GP64(), GP64()
+		Load(Param("a"), a)
+		Load(Param("b"), b)
+		XORQ(acc, acc)
+		for i, c := range condspec.Conds {
+			t := GP64()
+			XORQ(t, t) // SETcc writes only the low byte
+			CMPQ(a, b)
+			setcc(c.Name, t)
+			if i > 0 {
+				SHLQ(operand.U8(i), t)
+			}
+			ORQ(t, acc)
+		}
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
+
+	TEXT("JmpAll", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a, b, acc := GP64(), GP64(), GP64()
+		Load(Param("a"), a)
+		Load(Param("b"), b)
+		XORQ(acc, acc)
+		for i, c := range condspec.Conds {
+			taken := fmt.Sprintf("jmpall_%d_taken", i)
+			done := fmt.Sprintf("jmpall_%d_done", i)
+			CMPQ(a, b)
+			jcc(c.Name, operand.LabelRef(taken))
+			JMP(operand.LabelRef(done))
+			Label(taken)
+			ORQ(operand.U32(1<<uint(i)), acc)
+			Label(done)
+		}
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
+
+	TEXT("CmovAll", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a, b, acc := GP64(), GP64(), GP64()
+		Load(Param("a"), a)
+		Load(Param("b"), b)
+		XORQ(acc, acc)
+		for i, c := range condspec.Conds {
+			bit, d := GP64(), GP64()
+			MOVQ(operand.U64(1<<uint(i)), bit)
+			XORQ(d, d)
+			CMPQ(a, b)
+			cmovcc(c.Name, bit, d)
+			ORQ(d, acc)
+		}
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
+
 	Generate()
+}
+
+// setcc, jcc and cmovcc emit one condspec condition in each consumer family.
+// They are exhaustive switches rather than table lookups so that adding a
+// condition to condspec without teaching all three families about it fails at
+// generation time, instead of silently contributing a zero bit that the
+// reference would then have to match.
+
+func setcc(name string, dst reg.GPVirtual) {
+	d := dst.As8()
+	switch name {
+	case "EQ":
+		SETEQ(d)
+	case "NE":
+		SETNE(d)
+	case "LT":
+		SETLT(d)
+	case "LE":
+		SETLE(d)
+	case "GT":
+		SETGT(d)
+	case "GE":
+		SETGE(d)
+	case "CS":
+		SETCS(d)
+	case "CC":
+		SETCC(d)
+	case "HI":
+		SETHI(d)
+	case "LS":
+		SETLS(d)
+	case "MI":
+		SETMI(d)
+	case "PL":
+		SETPL(d)
+	case "OS":
+		SETOS(d)
+	case "OC":
+		SETOC(d)
+	default:
+		panic("no SETcc emitter for condition " + name)
+	}
+}
+
+func jcc(name string, target operand.Op) {
+	switch name {
+	case "EQ":
+		JEQ(target)
+	case "NE":
+		JNE(target)
+	case "LT":
+		JLT(target)
+	case "LE":
+		JLE(target)
+	case "GT":
+		JGT(target)
+	case "GE":
+		JGE(target)
+	case "CS":
+		JCS(target)
+	case "CC":
+		JCC(target)
+	case "HI":
+		JHI(target)
+	case "LS":
+		JLS(target)
+	case "MI":
+		JMI(target)
+	case "PL":
+		JPL(target)
+	case "OS":
+		JOS(target)
+	case "OC":
+		JOC(target)
+	default:
+		panic("no Jcc emitter for condition " + name)
+	}
+}
+
+func cmovcc(name string, src, dst reg.GPVirtual) {
+	switch name {
+	case "EQ":
+		CMOVQEQ(src, dst)
+	case "NE":
+		CMOVQNE(src, dst)
+	case "LT":
+		CMOVQLT(src, dst)
+	case "LE":
+		CMOVQLE(src, dst)
+	case "GT":
+		CMOVQGT(src, dst)
+	case "GE":
+		CMOVQGE(src, dst)
+	case "CS":
+		CMOVQCS(src, dst)
+	case "CC":
+		CMOVQCC(src, dst)
+	case "HI":
+		CMOVQHI(src, dst)
+	case "LS":
+		CMOVQLS(src, dst)
+	case "MI":
+		CMOVQMI(src, dst)
+	case "PL":
+		CMOVQPL(src, dst)
+	case "OS":
+		CMOVQOS(src, dst)
+	case "OC":
+		CMOVQOC(src, dst)
+	default:
+		panic("no CMOVcc emitter for condition " + name)
+	}
 }

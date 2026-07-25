@@ -310,6 +310,70 @@ func Prop62(x uint64, y uint64) uint64
 
 func Prop63(x uint64, y uint64) uint64
 
+func MemProp0(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp1(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp2(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp3(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp4(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp5(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp6(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp7(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp8(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp9(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp10(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp11(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp12(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp13(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp14(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp15(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp16(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp17(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp18(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp19(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp20(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp21(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp22(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp23(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp24(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp25(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp26(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp27(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp28(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp29(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp30(x uint64, y uint64, p *[8]uint64) uint64
+
+func MemProp31(x uint64, y uint64, p *[8]uint64) uint64
+
 func MovbzxHigh(x uint64) uint64
 
 func CmovL32(x uint64, y uint64) uint64
@@ -319,3 +383,53 @@ func BextrMem(p *[4]uint64, i uint64, ctrl uint64) uint64
 func XorSelfEq(x uint64) uint64
 
 func MovLNegImm() uint64
+
+func IncLMem(p *[2]uint32)
+
+func DecLMem(p *[2]uint32)
+
+func IncQMem(p *[2]uint64)
+
+func CmpBHigh(x uint64) uint64
+
+func MovWLoad(x uint64, p *uint16) uint64
+
+func MulXAlias(x uint64, y uint64) uint64
+
+func TestQImm(x uint64, y uint64) uint64
+
+func FlagsAcrossTransparent(a uint64, b uint64) uint64
+
+func XorlSign(x uint64, y uint64) uint64
+
+func XorlMem(p *[2]uint32, v uint64)
+
+func IncQ(x uint64) uint64
+
+func DecL(x uint64) uint64
+
+func ShrL5(x uint64) uint64
+
+func SxWQ(x uint64) uint64
+
+func BsrQ(x uint64) uint64
+
+func BtsQ5(x uint64) uint64
+
+func ZxLQ(p *uint64) uint64
+
+func MovW(x uint64, y uint64) uint64
+
+func LeaQ(x uint64, y uint64) uint64
+
+func TestQZero(x uint64, y uint64) uint64
+
+func TestBZero(x uint64, y uint64) uint64
+
+func VecCopyReg(dst *[16]byte, src *[16]byte)
+
+func SetAll(a uint64, b uint64) uint64
+
+func JmpAll(a uint64, b uint64) uint64
+
+func CmovAll(a uint64, b uint64) uint64

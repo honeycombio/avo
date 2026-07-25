@@ -76,3 +76,41 @@ var propPrograms = [...]func(x, y uint64) uint64{
 
 // Fails to compile if the table and propspec.NumPrograms drift apart.
 var _ = [1]struct{}{}[len(propPrograms)-propspec.NumPrograms]
+
+// memPropPrograms is the same glue for the memory-operand family.
+var memPropPrograms = [...]func(x, y uint64, p *[8]uint64) uint64{
+	MemProp0,
+	MemProp1,
+	MemProp2,
+	MemProp3,
+	MemProp4,
+	MemProp5,
+	MemProp6,
+	MemProp7,
+	MemProp8,
+	MemProp9,
+	MemProp10,
+	MemProp11,
+	MemProp12,
+	MemProp13,
+	MemProp14,
+	MemProp15,
+	MemProp16,
+	MemProp17,
+	MemProp18,
+	MemProp19,
+	MemProp20,
+	MemProp21,
+	MemProp22,
+	MemProp23,
+	MemProp24,
+	MemProp25,
+	MemProp26,
+	MemProp27,
+	MemProp28,
+	MemProp29,
+	MemProp30,
+	MemProp31,
+}
+
+var _ = [1]struct{}{}[len(memPropPrograms)-propspec.NumMemPrograms]

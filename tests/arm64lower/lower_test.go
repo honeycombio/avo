@@ -12,6 +12,7 @@ import (
 	"testing"
 	"testing/quick"
 
+	"github.com/mmcloughlin/avo/tests/arm64lower/condspec"
 	"github.com/mmcloughlin/avo/tests/arm64lower/propspec"
 )
 
@@ -468,6 +469,11 @@ func TestOpcodeCoverage(t *testing.T) {
 		{"ShlB2", ShlB2, func(x uint64) uint64 { return x&^0xff | (x&0xff)<<2&0xff }},
 		// TZCNT is defined for a zero input (returns 64); the lowering matches.
 		{"TzcntQ", TzcntQ, func(x uint64) uint64 { return uint64(bits.TrailingZeros64(x)) }},
+		{"IncQ", IncQ, func(x uint64) uint64 { return x + 1 }},
+		{"DecL", DecL, func(x uint64) uint64 { return uint64(uint32(x) - 1) }},
+		{"ShrL5", ShrL5, func(x uint64) uint64 { return uint64(uint32(x) >> 5) }},
+		{"SxWQ", SxWQ, func(x uint64) uint64 { return uint64(int64(int16(x))) }},
+		{"BtsQ5", BtsQ5, func(x uint64) uint64 { return x | 1<<5 }},
 	}
 	for _, c := range unary {
 		t.Run(c.name, func(t *testing.T) {
@@ -492,11 +498,50 @@ func TestOpcodeCoverage(t *testing.T) {
 		}
 	})
 
+	// BSR is likewise undefined for zero: it reports the index of the highest
+	// set bit, so only non-zero values have an architectural answer.
+	t.Run("BsrQ", func(t *testing.T) {
+		for _, x := range xs {
+			if x == 0 {
+				continue
+			}
+			if got, want := BsrQ(x), uint64(bits.Len64(x)-1); got != want {
+				t.Errorf("BsrQ(%#x) = %d, want %d", x, got, want)
+			}
+		}
+	})
+
+	// MOVLQZX only exists as a load; check it takes exactly four bytes from the
+	// address rather than eight.
+	t.Run("ZxLQ", func(t *testing.T) {
+		for _, x := range xs {
+			v := x
+			if got, want := ZxLQ(&v), uint64(uint32(x)); got != want {
+				t.Errorf("ZxLQ(%#x) = %#x, want %#x", x, got, want)
+			}
+		}
+	})
+
 	binary := []struct {
 		name string
 		got  func(uint64, uint64) uint64
 		want func(uint64, uint64) uint64
 	}{
+		// MOVW replaces only the low 16 bits of the destination.
+		{"MovW", MovW, func(x, y uint64) uint64 { return x&^0xffff | y&0xffff }},
+		{"LeaQ", LeaQ, func(x, y uint64) uint64 { return x + y*8 - 24 }},
+		{"TestQZero", TestQZero, func(x, y uint64) uint64 {
+			if x&y == 0 {
+				return 1
+			}
+			return 0
+		}},
+		{"TestBZero", TestBZero, func(x, y uint64) uint64 {
+			if x&y&0xff == 0 {
+				return 1
+			}
+			return 0
+		}},
 		{"AddL", AddL, func(x, y uint64) uint64 { return uint64(uint32(x) + uint32(y)) }},
 		{"SubL", SubL, func(x, y uint64) uint64 { return uint64(uint32(x) - uint32(y)) }},
 		{"AndL", AndL, func(x, y uint64) uint64 { return uint64(uint32(x) & uint32(y)) }},
@@ -654,6 +699,245 @@ func TestSecondRoundRegressions(t *testing.T) {
 	t.Run("MovLNegImm", func(t *testing.T) {
 		if got, want := MovLNegImm(), uint64(0xffffffff); got != want {
 			t.Errorf("MovLNegImm() = %#x, want %#x", got, want)
+		}
+	})
+}
+
+// TestConditionTable executes every condition the lowering can translate in
+// every consumer family that can read one. x86 and arm64 disagree about the
+// carry flag's sense after a subtraction, so the translation table inverts the
+// unsigned conditions on purpose; that is only checkable by running both sides
+// against the same compare. The signed conditions matter for the opposite
+// reason -- they agree, but only because the overflow flag is set the same way,
+// which the operands below deliberately provoke.
+func TestConditionTable(t *testing.T) {
+	// Chosen to straddle the signed/unsigned boundary and to make a-b overflow:
+	// subtracting across the sign boundary is the only way V and N disagree, and
+	// that is exactly where MI differs from LT and OS from OC.
+	vals := []uint64{
+		0, 1, 2, 0x7fffffffffffffff, 0x8000000000000000, 0x8000000000000001,
+		^uint64(0), 0xdeadbeefcafef00d, 1 << 32, 0xffffffff,
+	}
+	families := []struct {
+		name string
+		fn   func(a, b uint64) uint64
+	}{
+		{"SETcc", SetAll},
+		{"Jcc", JmpAll},
+		{"CMOVcc", CmovAll},
+	}
+	for _, f := range families {
+		t.Run(f.name, func(t *testing.T) {
+			for _, a := range vals {
+				for _, b := range vals {
+					got, want := f.fn(a, b), condspec.Mask(a, b)
+					if got == want {
+						continue
+					}
+					// Name the conditions that disagree rather than printing two
+					// opaque bitmasks.
+					for i, c := range condspec.Conds {
+						gotBit, wantBit := got>>uint(i)&1 == 1, want>>uint(i)&1 == 1
+						if gotBit != wantBit {
+							t.Errorf("%s %s: CMPQ(%#x, %#x) gave %v, want %v",
+								f.name, c.Name, a, b, gotBit, wantBit)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestVecCopyReg covers MOVOA, the aligned 128-bit move, in its
+// register-to-register form.
+func TestVecCopyReg(t *testing.T) {
+	var src, dst [16]byte
+	for i := range src {
+		src[i] = byte(i * 7)
+	}
+	VecCopyReg(&dst, &src)
+	if dst != src {
+		t.Errorf("VecCopyReg gave %v, want %v", dst, src)
+	}
+}
+
+// TestRandomMemPrograms runs the memory-operand family. Where the register-only
+// programs check that each operation computes the right value, these check the
+// machinery around the operand: the address the lowering builds, the scratch
+// register it stages the value through, and the cache that lets a second access
+// reuse the first one's address. A stale cached address or a scratch register
+// reused while still live produces a wrong answer only in a particular
+// sequence, which is why these are generated rather than written by hand.
+func TestRandomMemPrograms(t *testing.T) {
+	base := [8]uint64{
+		0, 1, 0xdeadbeefcafef00d, 0xffffffff00000000,
+		0x8000000000000000, 0x00ff00ff00ff00ff, ^uint64(0), 0x123456789abcdef0,
+	}
+	inputs := []struct{ x, y uint64 }{
+		{0, 0}, {1, 1}, {0xdeadbeef, 2}, {^uint64(0), 3},
+		{1 << 63, 5}, {0x0123456789abcdef, 7}, {0xffffffff, 4},
+	}
+	for n := 0; n < propspec.NumMemPrograms; n++ {
+		prog := propspec.MemProgram(n, propspec.MemProgramLength)
+		names := make([]string, len(prog))
+		for i, op := range prog {
+			names[i] = propspec.MemOps[op].Name
+		}
+		for _, in := range inputs {
+			gotMem := base
+			got := memPropPrograms[n](in.x, in.y, &gotMem)
+
+			wantMem := base
+			want := in.x
+			idx := in.y & 3
+			for _, op := range prog {
+				want = propspec.MemOps[op].Ref(want, in.y, &wantMem, &idx)
+			}
+			if got != want {
+				t.Errorf("MemProp%d(%#x, %#x) = %#x, want %#x\nprogram: %s",
+					n, in.x, in.y, got, want, strings.Join(names, " -> "))
+			}
+			if gotMem != wantMem {
+				t.Errorf("MemProp%d(%#x, %#x) left memory %#x, want %#x\nprogram: %s",
+					n, in.x, in.y, gotMem, wantMem, strings.Join(names, " -> "))
+			}
+		}
+	}
+}
+
+// TestReviewRound4Regressions covers the silent miscompiles found by the fourth
+// round of adversarial review. Every one of them is reachable from an ordinary
+// x86 operand form that the in-tree generators happen never to use, which is
+// what makes them the interesting class: the printer had been exercised for
+// years by code that never took these paths.
+func TestReviewRound4Regressions(t *testing.T) {
+	// A 32-bit read-modify-write on memory must touch four bytes. The lowering
+	// loaded and stored eight, and since the W-form arithmetic zeroes the upper
+	// half of the scratch register, the store cleared the following word.
+	t.Run("MemRMWWidth", func(t *testing.T) {
+		cases := []struct {
+			name string
+			run  func(p *[2]uint32)
+			want [2]uint32
+		}{
+			{"IncLMem", IncLMem, [2]uint32{6, 0xcafebabe}},
+			{"DecLMem", DecLMem, [2]uint32{4, 0xcafebabe}},
+			{"XorlMem", func(p *[2]uint32) { XorlMem(p, 0xff) }, [2]uint32{5 ^ 0xff, 0xcafebabe}},
+		}
+		for _, c := range cases {
+			got := [2]uint32{5, 0xcafebabe}
+			c.run(&got)
+			if got != c.want {
+				t.Errorf("%s gave %#x, want %#x (the second element is the witness: "+
+					"a wide store zeroes it)", c.name, got, c.want)
+			}
+		}
+		q := [2]uint64{5, 0xdeadbeefcafef00d}
+		IncQMem(&q)
+		if want := ([2]uint64{6, 0xdeadbeefcafef00d}); q != want {
+			t.Errorf("IncQMem gave %#x, want %#x", q, want)
+		}
+	})
+
+	// XORL is 32-bit, so a sign test after it reads bit 31, not bit 63.
+	t.Run("XorlSign", func(t *testing.T) {
+		for _, c := range []struct{ x, y uint64 }{
+			{0x80000000, 0}, {0, 0x80000000}, {0x80000000, 0x80000000},
+			{0xffffffff00000000, 0}, {1, 2}, {0x7fffffff, 0},
+		} {
+			want := uint64(0)
+			if (uint32(c.x)^uint32(c.y))&0x80000000 != 0 {
+				want = 1
+			}
+			if got := XorlSign(c.x, c.y); got != want {
+				t.Errorf("XorlSign(%#x, %#x) = %d, want %d", c.x, c.y, got, want)
+			}
+		}
+	})
+
+	// A byte compare against a high-byte register reads bits 15:8. AH renames to
+	// the same arm64 register as AL, so masking compared the wrong byte -- and
+	// wrongly in both directions, which these two inputs pin down.
+	t.Run("CmpBHigh", func(t *testing.T) {
+		for _, c := range []struct {
+			x    uint64
+			want uint64
+		}{
+			{0x0205, 1}, // AH == 2, AL == 5
+			{0x0502, 0}, // AH == 5, AL == 2: the inverted case
+			{0x0200, 1},
+			{0x0002, 0},
+		} {
+			if got := CmpBHigh(c.x); got != c.want {
+				t.Errorf("CmpBHigh(%#x) = %d, want %d", c.x, got, c.want)
+			}
+		}
+	})
+
+	// A 16-bit load writes bits 15:0 and preserves the upper 48, like every
+	// other MOVW form. A bare zero-extending load is shorter and was wrong.
+	t.Run("MovWLoad", func(t *testing.T) {
+		for _, c := range []struct {
+			x uint64
+			v uint16
+		}{
+			{0xffffffffffff0000, 0x1234},
+			{0xdeadbeefcafe0000, 0xffff},
+			{0, 0x8000},
+			{^uint64(0), 0},
+		} {
+			v := c.v
+			want := c.x&^0xffff | uint64(c.v)
+			if got := MovWLoad(c.x, &v); got != want {
+				t.Errorf("MovWLoad(%#x, %#x) = %#x, want %#x", c.x, c.v, got, want)
+			}
+		}
+	})
+
+	// x86 lets MULX name one register for both destinations, and defines the
+	// high half as written second, so the high half survives.
+	t.Run("MulXAlias", func(t *testing.T) {
+		for _, c := range []struct{ x, y uint64 }{
+			{1 << 32, 0xdeadbeef00000000},
+			{3, 5},
+			{^uint64(0), ^uint64(0)},
+		} {
+			hi, _ := bits.Mul64(c.x, c.y)
+			if got := MulXAlias(c.x, c.y); got != hi {
+				t.Errorf("MulXAlias(%#x, %#x) = %#x, want the high half %#x", c.x, c.y, got, hi)
+			}
+		}
+	})
+
+	// The canonical immediate-test form, which x86 writes immediate-first.
+	t.Run("TestQImm", func(t *testing.T) {
+		for _, x := range []uint64{0, 0x10, 0x20, ^uint64(0), 0xefffffff} {
+			want := uint64(0)
+			if x&0x10 == 0 {
+				want = 1
+			}
+			if got := TestQImm(x, 0); got != want {
+				t.Errorf("TestQImm(%#x) = %d, want %d", x, got, want)
+			}
+		}
+	})
+
+	// Instructions that preserve EFLAGS on x86 must not break the link between a
+	// compare and the branch reading it. These used to abort generation; the
+	// risk in allowing them is a silently stale flag read, so the branch outcome
+	// is what gets checked.
+	t.Run("FlagsAcrossTransparent", func(t *testing.T) {
+		for _, c := range []struct{ a, b uint64 }{
+			{5, 5}, {5, 6}, {0, 0}, {^uint64(0), ^uint64(0)}, {1 << 63, 0},
+		} {
+			want := uint64(0)
+			if c.a == c.b {
+				want = 1
+			}
+			if got := FlagsAcrossTransparent(c.a, c.b); got != want {
+				t.Errorf("FlagsAcrossTransparent(%#x, %#x) = %d, want %d", c.a, c.b, got, want)
+			}
 		}
 	})
 }

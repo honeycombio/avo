@@ -2432,6 +2432,1000 @@ TEXT ·Prop63(SB), NOSPLIT, $0-24
 	MOVD  R0, ret+16(FP)
 	RET
 
+// func MemProp0(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp0(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ROR   $53, R0, R0
+	MOVHU 2(R2), R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ROR   $53, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	SUB   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp1(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp1(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	SUB   R1, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVW  8(R2), R0
+	ROR   $53, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp2(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp2(SB), NOSPLIT, $0-32
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVD p+16(FP), R2
+	MOVD R1, R3
+	AND  $0x00000003, R3, R3
+	MOVD 16(R2), R16
+	MUL  R16, R0, R0
+	MOVW 8(R2), R0
+	ROR  $53, R0, R0
+	MOVD R0, (R2)(R3<<3)
+	ADD  R3<<3, R2, R15
+	MOVD 8(R15), R16
+	ADD  R16, R0, R0
+	ROR  $53, R0, R0
+	MOVD R0, (R2)(R3<<3)
+	MOVD (R2)(R3<<3), R16
+	CMP  R16, R0
+	CSEL LO, R1, R0, R0
+	SUB  R1, R0, R0
+	ADD  R1, R0, R0
+	MOVD R0, ret+24(FP)
+	RET
+
+// func MemProp3(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp3(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	AND   $0x00000003, R1, R1
+	MOVW  R0, 24(R2)
+	MOVWU 4(R2), R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVW  R0, 24(R2)
+	MOVHU 2(R2), R0
+	MOVWU 4(R2), R0
+	ROR   $53, R0, R0
+	ADD   R1<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R1, R1
+	AND   $0x00000003, R1, R1
+	ADD   R1<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVW  8(R2), R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp4(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp4(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVHU 2(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVWU 4(R2), R0
+	SUB   R1, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp5(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp5(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	ADD   R1, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVWU 4(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp6(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp6(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ADD   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	SUB   R1, R0, R0
+	ROR   $53, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	SUB   R1, R0, R0
+	MOVHU 2(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ROR   $53, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp7(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp7(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVWU 4(R2), R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVHU 2(R2), R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVW  R0, 24(R2)
+	ADD   R1, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp8(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp8(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ROR   $53, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVHU 2(R2), R0
+	ROR   $53, R0, R0
+	SUB   R1, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	ROR   $53, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp9(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp9(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ADD   R1, R0, R0
+	MOVW  8(R2), R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	SUB   R1, R0, R0
+	MOVW  8(R2), R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVHU 2(R2), R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp10(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp10(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVW  8(R2), R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVW  8(R2), R0
+	SUB   R1, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVWU 4(R2), R0
+	MOVW  8(R2), R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp11(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp11(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVWU 4(R2), R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp12(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp12(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  R0, (R2)(R3<<3)
+	ROR   $53, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVW  R0, 24(R2)
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ADD   R1, R0, R0
+	MOVWU 4(R2), R0
+	ROR   $53, R0, R0
+	MOVW  8(R2), R0
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp13(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp13(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVW  R0, 24(R2)
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	SUB   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	ADD   R1, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVW  R0, 24(R2)
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp14(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp14(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	SUB   R1, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVD  R0, (R2)(R3<<3)
+	MOVW  8(R2), R0
+	MOVW  R0, 24(R2)
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	SUB   R1, R0, R0
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp15(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp15(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVHU 2(R2), R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVWU 4(R2), R0
+	ROR   $53, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp16(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp16(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVHU 2(R2), R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVW  R0, 24(R2)
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ROR   $53, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp17(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp17(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVHU 2(R2), R0
+	SUB   R1, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVHU 2(R2), R0
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp18(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp18(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVW  R0, 24(R2)
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	ADD   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   R1, R0, R0
+	MOVW  R0, 24(R2)
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp19(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp19(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	SUB   R1, R0, R0
+	SUB   R1, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVW  8(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp20(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp20(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	SUB   R1, R0, R0
+	MOVWU 4(R2), R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVHU 2(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVW  8(R2), R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp21(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp21(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVHU 2(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVW  8(R2), R0
+	ROR   $53, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp22(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp22(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	SUB   R1, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ROR   $53, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	SUB   R1, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp23(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp23(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVWU 4(R2), R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp24(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp24(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ADD   R1, R0, R0
+	MOVWU 4(R2), R0
+	SUB   R1, R0, R0
+	MOVWU 4(R2), R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	ADD   R1, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVW  8(R2), R0
+	ADD   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp25(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp25(SB), NOSPLIT, $0-32
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVD p+16(FP), R2
+	MOVD R1, R3
+	AND  $0x00000003, R3, R3
+	ROR  $53, R0, R0
+	MOVD (R2)(R3<<3), R16
+	CMP  R16, R0
+	CSEL LO, R1, R0, R0
+	MOVW R0, 24(R2)
+	ADD  R3<<3, R2, R15
+	MOVD 8(R15), R16
+	ADD  R16, R0, R0
+	MOVW R0, 24(R2)
+	MOVW R0, 24(R2)
+	MOVW R0, 24(R2)
+	ADD  R1, R0, R0
+	MOVD (R2)(R3<<3), R16
+	EOR  R16, R0, R0
+	ROR  $53, R0, R0
+	MOVD R0, ret+24(FP)
+	RET
+
+// func MemProp26(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp26(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVHU 2(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	ADD   R1, R0, R0
+	SUB   R1, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp27(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp27(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	MOVD  16(R2), R16
+	MUL   R16, R0, R0
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ADD   R1, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp28(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp28(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	MOVWU 4(R2), R0
+	ADD   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	ADD   R1, R0, R0
+	MOVWU 4(R2), R0
+	ADD   R3<<3, R2, R0
+	ADD   $8, R0, R0
+	SUB   R2, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp29(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp29(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	ROR   $53, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVW  R0, 24(R2)
+	ADD   R1, R0, R0
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	ADD   $1, R3, R3
+	AND   $0x00000003, R3, R3
+	ADD   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVHU 2(R2), R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp30(x uint64, y uint64, p *[8]uint64) uint64
+TEXT ·MemProp30(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	ADD   R1, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVD  8(R15), R16
+	ADD   R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  R0, (R2)(R3<<3)
+	MOVHU 2(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, (R2)(R3<<3)
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVW  8(R2), R0
+	MOVD  R0, ret+24(FP)
+	RET
+
+// func MemProp31(x uint64, y uint64, p *[8]uint64) uint64
+// Requires: CMOV
+TEXT ·MemProp31(SB), NOSPLIT, $0-32
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVD  p+16(FP), R2
+	MOVD  R1, R3
+	AND   $0x00000003, R3, R3
+	MOVHU 2(R2), R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVWU 4(R2), R0
+	SUB   R1, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	EOR   R16, R0, R0
+	MOVBU 1(R2), R16
+	BFI   $0, R16, $8, R0
+	MOVD  (R2)(R3<<3), R16
+	CMP   R16, R0
+	CSEL  LO, R1, R0, R0
+	ADD   R3<<3, R2, R15
+	MOVWU (R15), R16
+	ADDW  R16, R0, R0
+	ROR   $53, R0, R0
+	MOVD  (R2)(R3<<3), R16
+	ADD   R16, R0, R0
+	MOVD  R0, ret+24(FP)
+	RET
+
 // func MovbzxHigh(x uint64) uint64
 TEXT ·MovbzxHigh(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
@@ -2487,4 +3481,513 @@ xorself_end:
 TEXT ·MovLNegImm(SB), NOSPLIT, $0-8
 	MOVD $0xffffffff, R0
 	MOVD R0, ret+0(FP)
+	RET
+
+// func IncLMem(p *[2]uint32)
+TEXT ·IncLMem(SB), NOSPLIT, $0-8
+	MOVD  p+0(FP), R0
+	MOVWU (R0), R16
+	ADDW  $1, R16, R16
+	MOVW  R16, (R0)
+	RET
+
+// func DecLMem(p *[2]uint32)
+TEXT ·DecLMem(SB), NOSPLIT, $0-8
+	MOVD  p+0(FP), R0
+	MOVWU (R0), R16
+	SUBW  $1, R16, R16
+	MOVW  R16, (R0)
+	RET
+
+// func IncQMem(p *[2]uint64)
+TEXT ·IncQMem(SB), NOSPLIT, $0-8
+	MOVD p+0(FP), R0
+	MOVD (R0), R16
+	ADD  $1, R16, R16
+	MOVD R16, (R0)
+	RET
+
+// func CmpBHigh(x uint64) uint64
+TEXT ·CmpBHigh(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0, R3
+	MOVD $0x02, R16
+	AND  $0xff, R16, R16
+	UBFX $8, R0, $8, R15
+	CMP  R16, R15
+	CSET EQ, R16
+	BFI  $0, R16, $8, R3
+	MOVD R3, ret+8(FP)
+	RET
+
+// func MovWLoad(x uint64, p *uint16) uint64
+TEXT ·MovWLoad(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  p+8(FP), R1
+	MOVHU (R1), R16
+	BFI   $0, R16, $16, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func MulXAlias(x uint64, y uint64) uint64
+// Requires: BMI2
+TEXT ·MulXAlias(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R5
+	MOVD  y+8(FP), R2
+	MUL   R5, R2, R16
+	UMULH R5, R2, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func TestQImm(x uint64, y uint64) uint64
+TEXT ·TestQImm(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVD $0, R1
+	TST  $0x00000010, R0
+	CSET EQ, R16
+	BFI  $0, R16, $8, R1
+	MOVD R1, ret+16(FP)
+	RET
+
+// func FlagsAcrossTransparent(a uint64, b uint64) uint64
+TEXT ·FlagsAcrossTransparent(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	CMP  R1, R0
+	MVN  R0, R0
+	REVW R0, R0
+	MOVD R0, R16
+	MOVD R2, R0
+	MOVD R16, R2
+	BEQ  fat_eq
+	MOVD $0x0000000000000000, R2
+	JMP  fat_end
+
+fat_eq:
+	MOVD $0x0000000000000001, R2
+
+fat_end:
+	MOVD R2, ret+16(FP)
+	RET
+
+// func XorlSign(x uint64, y uint64) uint64
+TEXT ·XorlSign(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	EORW R1, R0, R0
+	TSTW R0, R0
+	BMI  xorlsign_neg
+	MOVD $0x0000000000000000, R0
+	JMP  xorlsign_end
+
+xorlsign_neg:
+	MOVD $0x0000000000000001, R0
+
+xorlsign_end:
+	MOVD R0, ret+16(FP)
+	RET
+
+// func XorlMem(p *[2]uint32, v uint64)
+TEXT ·XorlMem(SB), NOSPLIT, $0-16
+	MOVD  p+0(FP), R0
+	MOVD  v+8(FP), R1
+	MOVWU (R0), R16
+	EORW  R1, R16, R16
+	MOVW  R16, (R0)
+	RET
+
+// func IncQ(x uint64) uint64
+TEXT ·IncQ(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	ADD  $1, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func DecL(x uint64) uint64
+TEXT ·DecL(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	SUBW $1, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func ShrL5(x uint64) uint64
+TEXT ·ShrL5(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	LSRW $0x05, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func SxWQ(x uint64) uint64
+TEXT ·SxWQ(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVH R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BsrQ(x uint64) uint64
+TEXT ·BsrQ(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	CLZ  R0, R16
+	MOVD $63, R1
+	SUB  R16, R1, R1
+	MOVD R1, ret+8(FP)
+	RET
+
+// func BtsQ5(x uint64) uint64
+TEXT ·BtsQ5(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x0000000000000005, R1
+	MOVD $1, R16
+	LSL  R1, R16, R16
+	ORR  R16, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func ZxLQ(p *uint64) uint64
+TEXT ·ZxLQ(SB), NOSPLIT, $0-16
+	MOVD  p+0(FP), R0
+	MOVWU (R0), R0
+	MOVD  R0, ret+8(FP)
+	RET
+
+// func MovW(x uint64, y uint64) uint64
+TEXT ·MovW(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	BFI  $0, R1, $16, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func LeaQ(x uint64, y uint64) uint64
+TEXT ·LeaQ(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ADD  R1<<3, R0, R0
+	SUB  $24, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func TestQZero(x uint64, y uint64) uint64
+TEXT ·TestQZero(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVD $0, R2
+	TST  R1, R0
+	CSET EQ, R16
+	BFI  $0, R16, $8, R2
+	MOVD R2, ret+16(FP)
+	RET
+
+// func TestBZero(x uint64, y uint64) uint64
+TEXT ·TestBZero(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVD $0, R2
+	AND  $0xff, R1, R16
+	AND  $0xff, R0, R15
+	TST  R16, R15
+	CSET EQ, R16
+	BFI  $0, R16, $8, R2
+	MOVD R2, ret+16(FP)
+	RET
+
+// func VecCopyReg(dst *[16]byte, src *[16]byte)
+// Requires: SSE2
+TEXT ·VecCopyReg(SB), NOSPLIT, $0-16
+	MOVD  dst+0(FP), R0
+	MOVD  src+8(FP), R1
+	FMOVQ (R1), F0
+	VMOV  V0.B16, V0.B16
+	FMOVQ F0, (R0)
+	RET
+
+// func SetAll(a uint64, b uint64) uint64
+TEXT ·SetAll(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD $0, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET EQ, R16
+	BFI  $0, R16, $8, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET NE, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x01, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x02, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET LE, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x03, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET GT, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x04, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET GE, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x05, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET LO, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x06, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET HS, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x07, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET HI, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x08, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET LS, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x09, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET MI, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x0a, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET PL, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x0b, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET VS, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x0c, R3, R3
+	ORR  R3, R2, R2
+	MOVD $0, R3
+	CMP  R1, R0
+	CSET VC, R16
+	BFI  $0, R16, $8, R3
+	LSL  $0x0d, R3, R3
+	ORR  R3, R2, R2
+	MOVD R2, ret+16(FP)
+	RET
+
+// func JmpAll(a uint64, b uint64) uint64
+TEXT ·JmpAll(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD $0, R2
+	CMP  R1, R0
+	BEQ  jmpall_0_taken
+	JMP  jmpall_0_done
+
+jmpall_0_taken:
+	ORR $0x00000001, R2, R2
+
+jmpall_0_done:
+	CMP R1, R0
+	BNE jmpall_1_taken
+	JMP jmpall_1_done
+
+jmpall_1_taken:
+	ORR $0x00000002, R2, R2
+
+jmpall_1_done:
+	CMP R1, R0
+	BLT jmpall_2_taken
+	JMP jmpall_2_done
+
+jmpall_2_taken:
+	ORR $0x00000004, R2, R2
+
+jmpall_2_done:
+	CMP R1, R0
+	BLE jmpall_3_taken
+	JMP jmpall_3_done
+
+jmpall_3_taken:
+	ORR $0x00000008, R2, R2
+
+jmpall_3_done:
+	CMP R1, R0
+	BGT jmpall_4_taken
+	JMP jmpall_4_done
+
+jmpall_4_taken:
+	ORR $0x00000010, R2, R2
+
+jmpall_4_done:
+	CMP R1, R0
+	BGE jmpall_5_taken
+	JMP jmpall_5_done
+
+jmpall_5_taken:
+	ORR $0x00000020, R2, R2
+
+jmpall_5_done:
+	CMP R1, R0
+	BLO jmpall_6_taken
+	JMP jmpall_6_done
+
+jmpall_6_taken:
+	ORR $0x00000040, R2, R2
+
+jmpall_6_done:
+	CMP R1, R0
+	BHS jmpall_7_taken
+	JMP jmpall_7_done
+
+jmpall_7_taken:
+	ORR $0x00000080, R2, R2
+
+jmpall_7_done:
+	CMP R1, R0
+	BHI jmpall_8_taken
+	JMP jmpall_8_done
+
+jmpall_8_taken:
+	ORR $0x00000100, R2, R2
+
+jmpall_8_done:
+	CMP R1, R0
+	BLS jmpall_9_taken
+	JMP jmpall_9_done
+
+jmpall_9_taken:
+	ORR $0x00000200, R2, R2
+
+jmpall_9_done:
+	CMP R1, R0
+	BMI jmpall_10_taken
+	JMP jmpall_10_done
+
+jmpall_10_taken:
+	ORR $0x00000400, R2, R2
+
+jmpall_10_done:
+	CMP R1, R0
+	BPL jmpall_11_taken
+	JMP jmpall_11_done
+
+jmpall_11_taken:
+	ORR $0x00000800, R2, R2
+
+jmpall_11_done:
+	CMP R1, R0
+	BVS jmpall_12_taken
+	JMP jmpall_12_done
+
+jmpall_12_taken:
+	ORR $0x00001000, R2, R2
+
+jmpall_12_done:
+	CMP R1, R0
+	BVC jmpall_13_taken
+	JMP jmpall_13_done
+
+jmpall_13_taken:
+	ORR $0x00002000, R2, R2
+
+jmpall_13_done:
+	MOVD R2, ret+16(FP)
+	RET
+
+// func CmovAll(a uint64, b uint64) uint64
+// Requires: CMOV
+TEXT ·CmovAll(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD $0, R2
+	MOVD $0x0000000000000001, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL EQ, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000002, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL NE, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000004, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL LT, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000008, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL LE, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000010, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL GT, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000020, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL GE, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000040, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL LO, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000080, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL HS, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000100, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL HI, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000200, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL LS, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000400, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL MI, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000000800, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL PL, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000001000, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL VS, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD $0x0000000000002000, R3
+	MOVD $0, R5
+	CMP  R1, R0
+	CSEL VC, R3, R5, R5
+	ORR  R5, R2, R2
+	MOVD R2, ret+16(FP)
 	RET
