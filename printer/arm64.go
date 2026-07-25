@@ -1526,7 +1526,10 @@ func (p *arm64) lowerShift(op string, count, dst operand.Op, width int) {
 	// masks identically, but its immediate form rejects a count at or above the
 	// width outright, which would turn a legal x86 program into an assembly
 	// error. Mask here so the immediate matches what x86 would have done.
-	if n, ok := immVal(count); ok {
+	if n, ok := immVal(count); ok && n&int64(width-1) != n {
+		// Only rewrite when the mask actually changes the count. Reformatting an
+		// in-range immediate would churn the generated assembly for no reason:
+		// avo renders these in hex, and "$0x02" and "$2" assemble identically.
 		p.emit("%s $%d, %s, %s", op, n&int64(width-1), d, d)
 		return
 	}

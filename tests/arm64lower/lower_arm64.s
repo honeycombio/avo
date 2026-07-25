@@ -740,14 +740,14 @@ TEXT ·RolL7(SB), NOSPLIT, $0-16
 // func RorQ9(x uint64) uint64
 TEXT ·RorQ9(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	ROR  $9, R0, R0
+	ROR  $0x09, R0, R0
 	MOVD R0, ret+8(FP)
 	RET
 
 // func RorL9(x uint64) uint64
 TEXT ·RorL9(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	RORW $9, R0, R0
+	RORW $0x09, R0, R0
 	MOVD R0, ret+8(FP)
 	RET
 
@@ -785,14 +785,14 @@ TEXT ·PopcntQ(SB), NOSPLIT, $0-16
 // func SarQ3(x uint64) uint64
 TEXT ·SarQ3(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	ASR  $3, R0, R0
+	ASR  $0x03, R0, R0
 	MOVD R0, ret+8(FP)
 	RET
 
 // func SarL3(x uint64) uint64
 TEXT ·SarL3(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	ASRW $3, R0, R0
+	ASRW $0x03, R0, R0
 	MOVD R0, ret+8(FP)
 	RET
 
@@ -922,11 +922,11 @@ TEXT ·VecCopy(SB), NOSPLIT, $0-16
 TEXT ·Prop0(SB), NOSPLIT, $0-24
 	MOVD  x+0(FP), R0
 	MOVD  y+8(FP), R1
-	ASR   $5, R0, R0
+	ASR   $0x05, R0, R0
 	RORW  $27, R0, R0
 	ANDW  R1, R0, R0
 	MOVD  $0, R0
-	ASR   $5, R0, R0
+	ASR   $0x05, R0, R0
 	LSLW  $0x02, R0, R16
 	BFI   $0, R16, $8, R0
 	MOVD  $0, R0
@@ -1005,7 +1005,7 @@ TEXT ·Prop3(SB), NOSPLIT, $0-24
 	CSEL  LO, R1, R0, R0
 	CMP   R1, R0
 	CSEL  LO, R1, R0, R0
-	LSL   $3, R0, R0
+	LSL   $0x03, R0, R0
 	ADD   R1, R0, R15
 	BFI   $0, R15, $8, R0
 	MOVHU R0, R0
@@ -1027,9 +1027,9 @@ TEXT ·Prop4(SB), NOSPLIT, $0-24
 	MOVHU R0, R0
 	MOVD  $0, R0
 	MVN   R0, R0
-	LSL   $3, R0, R0
+	LSL   $0x03, R0, R0
 	ADD   R1, R0, R0
-	LSR   $7, R0, R0
+	LSR   $0x07, R0, R0
 	RBIT  R0, R0
 	CLZ   R0, R0
 	ADD   R1, R0, R0
@@ -1042,9 +1042,9 @@ TEXT ·Prop5(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
 	ANDW R1, R0, R0
-	LSR  $7, R0, R0
-	LSLW $9, R0, R0
-	LSLW $9, R0, R0
+	LSR  $0x07, R0, R0
+	LSLW $0x09, R0, R0
+	LSLW $0x09, R0, R0
 	MOVD $0, R0
 	MULW R1, R0, R0
 	CMP  R1, R0
@@ -1052,7 +1052,7 @@ TEXT ·Prop5(SB), NOSPLIT, $0-24
 	SUBW R1, R0, R0
 	RBIT R0, R0
 	CLZ  R0, R0
-	LSLW $9, R0, R0
+	LSLW $0x09, R0, R0
 	ROR  $51, R0, R0
 	BFI  $0, R1, $8, R0
 	MOVD R0, ret+16(FP)
@@ -1077,8 +1077,8 @@ TEXT ·Prop6(SB), NOSPLIT, $0-24
 	MOVW  R0, R0
 	CMP   R1, R0
 	CSEL  EQ, R1, R0, R0
-	ASR   $5, R0, R0
-	LSR   $7, R0, R0
+	ASR   $0x05, R0, R0
+	LSR   $0x07, R0, R0
 	MOVW  R0, R0
 	MOVD  R0, ret+16(FP)
 	RET
@@ -1088,7 +1088,7 @@ TEXT ·Prop6(SB), NOSPLIT, $0-24
 TEXT ·Prop7(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
-	LSLW $9, R0, R0
+	LSLW $0x09, R0, R0
 	AND  R1, R0, R0
 	MULW R1, R0, R0
 	ADDW R1, R0, R0
@@ -1120,7 +1120,7 @@ TEXT ·Prop8(SB), NOSPLIT, $0-24
 	VCNT    V31.B8, V31.B8
 	VUADDLV V31.B8, V31
 	FMOVD   F31, R0
-	LSLW    $9, R0, R0
+	LSLW    $0x09, R0, R0
 	MUL     R1, R0, R0
 	AND     R1, R0, R0
 	MOVD    $0, R0
@@ -1204,7 +1204,7 @@ TEXT ·Prop11(SB), NOSPLIT, $0-24
 	CMP     R1, R0
 	CSET    LT, R16
 	BFI     $0, R16, $8, R0
-	ASR     $5, R0, R0
+	ASR     $0x05, R0, R0
 	BFI     $0, R1, $8, R0
 	MULW    R1, R0, R0
 	FMOVD   R0, F31
@@ -1726,19 +1726,19 @@ TEXT ·CmpLIntMin(SB), NOSPLIT, $0-16
 	CMPW $-2147483648, R0
 	CSET GE, R16
 	BFI  $0, R16, $8, R2
-	LSL  $1, R2, R2
+	LSL  $0x01, R2, R2
 	ORR  R2, R1, R1
 	MOVD $0, R2
 	CMPW $-2147483648, R0
 	CSET GT, R16
 	BFI  $0, R16, $8, R2
-	LSL  $2, R2, R2
+	LSL  $0x02, R2, R2
 	ORR  R2, R1, R1
 	MOVD $0, R2
 	CMPW $-2147483648, R0
 	CSET LE, R16
 	BFI  $0, R16, $8, R2
-	LSL  $3, R2, R2
+	LSL  $0x03, R2, R2
 	ORR  R2, R1, R1
 	MOVD R1, ret+8(FP)
 	RET
@@ -1788,7 +1788,7 @@ TEXT ·DecL(SB), NOSPLIT, $0-16
 // func ShrL5(x uint64) uint64
 TEXT ·ShrL5(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	LSRW $5, R0, R0
+	LSRW $0x05, R0, R0
 	MOVD R0, ret+8(FP)
 	RET
 
@@ -1890,79 +1890,79 @@ TEXT ·SetAll(SB), NOSPLIT, $0-24
 	CMP  R1, R0
 	CSET NE, R16
 	BFI  $0, R16, $8, R3
-	LSL  $1, R3, R3
+	LSL  $0x01, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET LT, R16
 	BFI  $0, R16, $8, R3
-	LSL  $2, R3, R3
+	LSL  $0x02, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET LE, R16
 	BFI  $0, R16, $8, R3
-	LSL  $3, R3, R3
+	LSL  $0x03, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET GT, R16
 	BFI  $0, R16, $8, R3
-	LSL  $4, R3, R3
+	LSL  $0x04, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET GE, R16
 	BFI  $0, R16, $8, R3
-	LSL  $5, R3, R3
+	LSL  $0x05, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET LO, R16
 	BFI  $0, R16, $8, R3
-	LSL  $6, R3, R3
+	LSL  $0x06, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET HS, R16
 	BFI  $0, R16, $8, R3
-	LSL  $7, R3, R3
+	LSL  $0x07, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET HI, R16
 	BFI  $0, R16, $8, R3
-	LSL  $8, R3, R3
+	LSL  $0x08, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET LS, R16
 	BFI  $0, R16, $8, R3
-	LSL  $9, R3, R3
+	LSL  $0x09, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET MI, R16
 	BFI  $0, R16, $8, R3
-	LSL  $10, R3, R3
+	LSL  $0x0a, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET PL, R16
 	BFI  $0, R16, $8, R3
-	LSL  $11, R3, R3
+	LSL  $0x0b, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET VS, R16
 	BFI  $0, R16, $8, R3
-	LSL  $12, R3, R3
+	LSL  $0x0c, R3, R3
 	ORR  R3, R2, R2
 	MOVD $0, R3
 	CMP  R1, R0
 	CSET VC, R16
 	BFI  $0, R16, $8, R3
-	LSL  $13, R3, R3
+	LSL  $0x0d, R3, R3
 	ORR  R3, R2, R2
 	MOVD R2, ret+16(FP)
 	RET
