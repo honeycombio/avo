@@ -432,9 +432,34 @@ func log2scale(s uint8) int {
 	panic(fmt.Sprintf("arm64: bad scale %d", s))
 }
 
+// pseudoSPLocalOffset is where a function's locals begin, relative to the arm64
+// hardware stack pointer.
+//
+// The two architectures put the return address in different places. x86's CALL
+// pushes it onto the stack before the callee runs, so it sits above the frame
+// and local 0 is at SP+0. arm64's BL leaves it in the link register and the
+// callee spills it itself; Go's convention puts it at the BOTTOM of the frame,
+// so 0(RSP) is the saved link register and locals begin at 8(RSP).
+//
+// avo's AllocLocal hands out x86-relative displacements, so they need shifting.
+const pseudoSPLocalOffset = 8
+
+// frameAdjust rewrites a pseudo-SP-based memory operand for arm64's frame
+// layout. Without it every local lands 8 bytes low and local 0 lands on the
+// saved link register. Nothing computes a wrong value -- all locals shift
+// uniformly, so loads and stores still agree -- but any stack unwind (GC
+// scanning, panic, profiling) then reads a local as the return address.
+func frameAdjust(m operand.Mem) operand.Mem {
+	if m.Base != nil && m.Base.Asm() == "SP" {
+		m.Disp += pseudoSPLocalOffset
+	}
+	return m
+}
+
 // memAsm lowers a memory operand to a simple base+disp arm64 operand string,
 // emitting an ADD into scratchAddr first for indexed operands.
 func (p *arm64) memAsm(m operand.Mem) string {
+	m = frameAdjust(m)
 	if m.Symbol.Name != "" {
 		s := m.Symbol.String() + fmt.Sprintf("%+d", m.Disp)
 		if m.Base != nil {
@@ -466,6 +491,7 @@ func (p *arm64) memAsm(m operand.Mem) string {
 // memAddr materializes the effective address of m into a GP register and returns
 // its name (for instructions like VLD1/VST1 that take only a base register).
 func (p *arm64) memAddr(m operand.Mem) string {
+	m = frameAdjust(m)
 	if m.Symbol.Name != "" {
 		panic("arm64: address-of symbol operand not supported")
 	}
@@ -1064,6 +1090,7 @@ func (p *arm64) lowerWideMul(hiOp string, src operand.Op) {
 }
 
 func (p *arm64) lowerLEA(m operand.Mem, dst string) {
+	m = frameAdjust(m)
 	if m.Symbol.Name != "" {
 		panic("arm64: LEA of symbol not supported")
 	}
