@@ -232,6 +232,15 @@ func (p *arm64) global(g *ir.Global) {
 }
 
 func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
+	// Before anything else, and before the twin-skip return below: the flag
+	// analyses read straight through comments on the premise that comments
+	// carry no code, and a skipped twin is never walked at all. Both would
+	// otherwise trust a guard that had not run.
+	for _, n := range f.Nodes {
+		if c, ok := n.(*ir.Comment); ok {
+			checkNoDirective(c)
+		}
+	}
 	// On arm64 we emit one implementation per logical function. Where the
 	// generator produced both a generic ("_amd64") and a BMI2 ("_bmi2") variant,
 	// Config.ARM64PreferBMI2 picks which one; the other is skipped. arm64 has
@@ -334,11 +343,23 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 // generators here actually use; only inline conditional arms are gone. The
 // evaluator, with every fix review found for it, is preserved on the
 // lizf.arm64-goamd64-directives branch if it is ever wanted back.
+//
+// The file-level #include lines (f.Includes, e.g. textflag.h) are not policed
+// here: they are emitted by the printer itself, identically on both sides, and
+// never come from the instruction stream.
 func checkNoDirective(c *ir.Comment) {
 	for _, line := range c.Lines {
-		if d := strings.TrimSpace(line); strings.HasPrefix(d, "#") {
-			panic(fmt.Sprintf("arm64: preprocessor directive %q is not supported; "+
-				"use twin functions for GOAMD64 variants", d))
+		// Split first. A single Lines entry may contain a newline, and the
+		// emitter writes "\t// %s\n" -- so only the FIRST physical line gets the
+		// comment prefix, and a '#' after an embedded newline lands at column 0
+		// as a live directive. Checking the logical line would miss it, which is
+		// the same mistake in miniature as the subsystem this replaced: model
+		// what the consumer actually reads, not how the producer structured it.
+		for _, phys := range strings.FieldsFunc(line, func(r rune) bool { return r == '\n' || r == '\r' }) {
+			if d := strings.TrimSpace(phys); strings.HasPrefix(d, "#") {
+				panic(fmt.Sprintf("arm64: comment line %q would be a preprocessor directive; "+
+					"use twin functions for GOAMD64 variants, and avoid a leading '#' in prose", d))
+			}
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package printer_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -484,6 +485,11 @@ func TestARM64DirectivesRejected(t *testing.T) {
 		{"#include \"defs.h\""}, // could define or open anything
 		{"#endif"},
 		{"#if 1"}, // not a directive Go's assembler has at all
+		// An embedded newline splits into two physical output lines and only
+		// the first gets the "// " prefix, so this '#' lands at column 0 as a
+		// live directive -- and GOAMD64_v1 is defined only for GOARCH=amd64,
+		// making it a per-architecture boundary with no rewrite step needed.
+		{"benign text\n#ifdef GOAMD64_v1"},
 	} {
 		t.Run(strings.TrimSpace(lines[0]), func(t *testing.T) {
 			ctx := build.NewContext()
@@ -501,7 +507,7 @@ func TestARM64DirectivesRejected(t *testing.T) {
 				if r == nil {
 					t.Fatalf("expected a panic for %q", lines)
 				}
-				if msg, ok := r.(string); !ok || !strings.Contains(msg, "not supported") {
+				if msg, ok := r.(string); !ok || !strings.Contains(msg, "twin functions") {
 					t.Fatalf("unexpected panic: %v", r)
 				}
 			}()
@@ -522,5 +528,47 @@ func TestARM64PlainCommentsPass(t *testing.T) {
 	out := printARM64(t, ctx, printer.NewGoRunConfig())
 	if !strings.Contains(out, "// this is a normal comment") {
 		t.Errorf("plain comment did not survive:\n%s", out)
+	}
+}
+
+// TestARM64DirectiveInSkippedTwin checks the guard runs even for a function
+// that is never lowered.
+//
+// Where a generator produced both a generic and a BMI2 variant, arm64 emits one
+// and skips the other. The skipped one still ships on the amd64 side, so a
+// directive hidden in it would go live there while arm64 ran the clean twin --
+// and the arm64 output would look perfectly correct, which is exactly why
+// differential testing cannot see this one.
+func TestARM64DirectiveInSkippedTwin(t *testing.T) {
+	for _, preferBMI2 := range []bool{false, true} {
+		t.Run(fmt.Sprintf("PreferBMI2=%v", preferBMI2), func(t *testing.T) {
+			ctx := build.NewContext()
+			// The directive sits in the BMI2 twin; with the default config that
+			// is the one skipped.
+			ctx.Function("twin_amd64")
+			ctx.SignatureExpr("func()")
+			ctx.RET()
+			ctx.Function("twin_bmi2")
+			ctx.SignatureExpr("func()")
+			ctx.Comment("#ifdef GOAMD64_v3")
+			ctx.RET()
+
+			f, errs := ctx.Result()
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			cfg := printer.NewGoRunConfig()
+			cfg.ARM64PreferBMI2 = preferBMI2
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("expected a panic for a directive in a twin, selected or not")
+				}
+				if msg, ok := r.(string); !ok || !strings.Contains(msg, "twin functions") {
+					t.Fatalf("unexpected panic: %v", r)
+				}
+			}()
+			_, _ = printer.NewARM64Asm(cfg).Print(f)
+		})
 	}
 }
