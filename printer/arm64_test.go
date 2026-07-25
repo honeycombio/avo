@@ -296,3 +296,32 @@ func TestARM64FlagSemanticGuards(t *testing.T) {
 		})
 	}
 }
+
+// TestARM64AddCarryGuard checks that a carry-condition consumer after an
+// addition fails generation. x86 and arm64 both set carry-out on an add, so the
+// condition map -- which translates by post-compare meaning, where the two use
+// opposite borrow conventions -- would invert the test.
+func TestARM64AddCarryGuard(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("addcarry")
+	ctx.SignatureExpr("func()")
+	ctx.ADDQ(reg.RAX, reg.RCX)
+	ctx.JCS(operand.LabelRef("wrap"))
+	ctx.Label("wrap")
+	ctx.RET()
+
+	f, errs := ctx.Result()
+	if errs != nil {
+		t.Fatal(errs)
+	}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a panic for a carry condition after ADD")
+		}
+		if msg, ok := r.(string); !ok || !strings.Contains(msg, "only a compare or subtract") {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+}

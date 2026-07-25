@@ -2467,3 +2467,25 @@ TEXT ·BextrMem(SB), NOSPLIT, $0-32
 	AND  R0, R16, R0
 	MOVD R0, ret+24(FP)
 	RET
+
+// func XorSelfEq(x uint64) uint64
+TEXT ·XorSelfEq(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0, R0
+	TST  R0, R0
+	BEQ  xorself_yes
+	MOVD $0x0000000000000000, R0
+	JMP  xorself_end
+
+xorself_yes:
+	MOVD $0x0000000000000001, R0
+
+xorself_end:
+	MOVD R0, ret+8(FP)
+	RET
+
+// func MovLNegImm() uint64
+TEXT ·MovLNegImm(SB), NOSPLIT, $0-8
+	MOVD $4294967295, R0
+	MOVD R0, ret+0(FP)
+	RET

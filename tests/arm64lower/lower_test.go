@@ -637,3 +637,23 @@ func TestReviewRegressions(t *testing.T) {
 		}
 	})
 }
+
+// TestSecondRoundRegressions covers the lowering bugs found by the independent
+// review of the fixed printer: the XOR-self zeroing shortcut dropping the flags
+// x86 sets there, and a negative 32-bit immediate sign-extending.
+func TestSecondRoundRegressions(t *testing.T) {
+	t.Run("XorSelfEq", func(t *testing.T) {
+		// XOR of a register with itself is always zero, so ZF is always set.
+		for _, x := range []uint64{0, 1, ^uint64(0), 0xdeadbeef} {
+			if got := XorSelfEq(x); got != 1 {
+				t.Errorf("XorSelfEq(%#x) = %d, want 1 (ZF must be set)", x, got)
+			}
+		}
+	})
+
+	t.Run("MovLNegImm", func(t *testing.T) {
+		if got, want := MovLNegImm(), uint64(0xffffffff); got != want {
+			t.Errorf("MovLNegImm() = %#x, want %#x", got, want)
+		}
+	})
+}

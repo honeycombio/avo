@@ -728,5 +728,33 @@ func main() {
 		RET()
 	}
 
+	// XorSelfEq: x86's XOR-self zeroing idiom also sets ZF, and a consumer may
+	// read it. The arm64 shortcut replaces the XOR with a move, which sets no
+	// flags, so it has to supply them separately.
+	TEXT("XorSelfEq", NOSPLIT, "func(x uint64) uint64")
+	{
+		x, res := GP64(), GP64()
+		Load(Param("x"), x)
+		XORQ(x, x)
+		JEQ(operand.LabelRef("xorself_yes"))
+		MOVQ(operand.U64(0), res)
+		JMP(operand.LabelRef("xorself_end"))
+		Label("xorself_yes")
+		MOVQ(operand.U64(1), res)
+		Label("xorself_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+
+	// MovLNegImm: a 32-bit move zero-extends, so a negative immediate must land
+	// as its unsigned 32-bit value rather than sign-extended across all 64 bits.
+	TEXT("MovLNegImm", NOSPLIT, "func() uint64")
+	{
+		d := GP64()
+		MOVL(operand.I32(-1), d.As32())
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
 	Generate()
 }

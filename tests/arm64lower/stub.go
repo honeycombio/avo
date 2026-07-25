@@ -315,3 +315,7 @@ func MovbzxHigh(x uint64) uint64
 func CmovL32(x uint64, y uint64) uint64
 
 func BextrMem(p *[4]uint64, i uint64, ctrl uint64) uint64
+
+func XorSelfEq(x uint64) uint64
+
+func MovLNegImm() uint64

@@ -261,6 +261,12 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
+			if !pp.active() {
+				// Inside a dead arm: emitting the label while dropping the
+				// instructions under it would let a jump land on the code that
+				// follows the conditional.
+				break
+			}
 			p.constOK = false
 			p.addrOK = false // control-flow join: the cache may not hold on every edge
 			p.flush()
@@ -370,6 +376,17 @@ func (c *goamd64Cond) consume(lines []string) bool {
 		}
 	}
 	return handled
+}
+
+// zeroSelf lowers x86's "XOR r, r" zeroing idiom. The register is cleared with
+// a move, but x86 also sets ZF here, so when a consumer reads those flags the
+// move must be followed by a test -- the arithmetic lowering that would
+// otherwise have supplied them is skipped by this shortcut.
+func (p *arm64) zeroSelf(r, test string, flags bool) {
+	p.emit("MOVD $0, %s", r)
+	if flags {
+		p.emit("%s %s, %s", test, r, r)
+	}
 }
 
 // emit buffers a single lowered arm64 instruction. The block is column-aligned
@@ -519,6 +536,9 @@ func (p *arm64) trackConst(n *ir.Instruction) {
 	v, ok := immVal(n.Operands[0])
 	if !ok {
 		return
+	}
+	if n.Opcode == "MOVL" {
+		v = int64(uint32(v)) // the register holds the zero-extended 32-bit value
 	}
 	r, ok := n.Operands[1].(reg.Register)
 	if !ok {
@@ -747,7 +767,7 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	case "XORQ":
 		if ra, ok := ops[0].(reg.Register); ok {
 			if rb, ok := ops[1].(reg.Register); ok && rename(ra) == rename(rb) {
-				p.emit("MOVD $0, %s", rename(rb))
+				p.zeroSelf(rename(rb), "TST", flags)
 				return
 			}
 		}
@@ -755,7 +775,7 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	case "XORL":
 		if ra, ok := ops[0].(reg.Register); ok {
 			if rb, ok := ops[1].(reg.Register); ok && rename(ra) == rename(rb) {
-				p.emit("MOVD $0, %s", rename(rb))
+				p.zeroSelf(rename(rb), "TSTW", flags)
 				return
 			}
 		}
@@ -1159,9 +1179,17 @@ func (p *arm64) lowerMOVL(src, dst operand.Op) {
 		p.emit("MOVWU %s, %s", p.memAsmW(smem, 4), operandReg(dst))
 		return
 	}
-	if imm, ok := immAsm(src); ok {
-		// Immediate is <=32-bit unsigned; MOVD leaves the upper 32 bits zero.
-		p.emit("MOVD %s, %s", imm, operandReg(dst))
+	if _, isImm := immAsm(src); isImm {
+		// A 32-bit move zero-extends, so the immediate must be materialized as
+		// its unsigned 32-bit value: "MOVL $-1, r32" leaves 0x00000000ffffffff
+		// on x86, where a bare "MOVD $-1" would set all 64 bits.
+		v, ok := immVal(src)
+		if !ok {
+			panic("arm64: bad MOVL immediate")
+		}
+		// Rendered in avo's own hex style so an unaffected immediate keeps its
+		// existing spelling and regeneration stays byte-for-byte stable.
+		p.emit("MOVD $0x%08x, %s", uint32(v), operandReg(dst))
 		return
 	}
 	p.emit("MOVWU %s, %s", operandReg(src), operandReg(dst))
@@ -1789,18 +1817,28 @@ func flagProducers(nodes []ir.Node) map[int]bool {
 					panic(fmt.Sprintf("arm64: %s consumes condition %s from %s, but after a logical op only the ZF/SF conditions mean the same thing on both architectures", ins.Opcode, cond, prev.Opcode))
 				}
 			}
-			if isCarryPreservingOp(prev.Opcode) && isCondConsumer && carryCondition(cond) {
-				// x86 INC/DEC deliberately preserve CF so they can appear inside
-				// a carry-driven loop; arm64 has no such form, and the ADDS/SUBS
-				// this lowers to overwrites C with the increment's own carry.
-				panic(fmt.Sprintf("arm64: %s reads carry condition %s across %s, which preserves CF on x86 but not once lowered", ins.Opcode, cond, prev.Opcode))
-			}
 			if strings.HasPrefix(ins.Opcode, "ADC") && !isBorrowProducer(prev.Opcode) {
 				// The ADC lowering (CSINC on HS) hardcodes the borrow convention,
 				// which only matches when the producer is a compare or subtract.
 				// After an addition both ISAs use the same carry-out convention,
 				// so the same CSINC would increment on exactly the wrong input.
 				panic(fmt.Sprintf("arm64: %s reads carry from %s; the lowering assumes a borrow-producing compare or subtract", ins.Opcode, prev.Opcode))
+			}
+			if isCondConsumer && carryCondition(cond) && !isBorrowProducer(prev.Opcode) &&
+				!isCarryPreservingOp(prev.Opcode) && !isLogicalFlagOp(prev.Opcode) {
+				// armCond maps carry conditions by their post-compare meaning,
+				// where x86 and arm64 use opposite borrow conventions. After an
+				// addition both set carry-out with the SAME sense, so that map
+				// inverts the test; and "above"/"below or equal" combine carry
+				// with zero in a way no single arm64 condition expresses. Only a
+				// compare or subtract can be translated.
+				panic(fmt.Sprintf("arm64: %s reads carry condition %s from %s; only a compare or subtract produces the borrow sense this lowering assumes", ins.Opcode, cond, prev.Opcode))
+			}
+			if isCarryPreservingOp(prev.Opcode) && isCondConsumer && carryCondition(cond) {
+				// x86 INC/DEC deliberately preserve CF so they can appear inside
+				// a carry-driven loop; arm64 has no such form, and the ADDS/SUBS
+				// this lowers to overwrites C with the increment's own carry.
+				panic(fmt.Sprintf("arm64: %s reads carry condition %s across %s, which preserves CF on x86 but not once lowered", ins.Opcode, cond, prev.Opcode))
 			}
 			if mark {
 				setflags[k] = true

@@ -2244,3 +2244,24 @@ TEXT ·BextrMem(SB), NOSPLIT, $0-32
 	BEXTRQ DX, (AX)(CX*8), AX
 	MOVQ   AX, ret+24(FP)
 	RET
+
+// func XorSelfEq(x uint64) uint64
+TEXT ·XorSelfEq(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	XORQ AX, AX
+	JEQ  xorself_yes
+	MOVQ $0x0000000000000000, AX
+	JMP  xorself_end
+
+xorself_yes:
+	MOVQ $0x0000000000000001, AX
+
+xorself_end:
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func MovLNegImm() uint64
+TEXT ·MovLNegImm(SB), NOSPLIT, $0-8
+	MOVL $-1, AX
+	MOVQ AX, ret+0(FP)
+	RET
