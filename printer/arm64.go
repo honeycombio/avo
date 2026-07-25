@@ -735,31 +735,6 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 	return fmt.Sprintf("(%s)", scratchAddr)
 }
 
-// memAddr materializes the effective address of m into a GP register and returns
-// its name (for instructions like VLD1/VST1 that take only a base register).
-func (p *arm64) memAddr(m operand.Mem) string {
-	m = frameAdjust(m)
-	if m.Symbol.Name != "" {
-		panic("arm64: address-of symbol operand not supported")
-	}
-	base := rename(m.Base)
-	cur := base
-	if m.Index != nil && m.Scale != 0 {
-		sh := log2scale(m.Scale)
-		if sh == 0 {
-			p.emit("ADD %s, %s, %s", rename(m.Index), base, scratchAddr)
-		} else {
-			p.emit("ADD %s<<%d, %s, %s", rename(m.Index), sh, base, scratchAddr)
-		}
-		cur = scratchAddr
-	}
-	if m.Disp != 0 {
-		p.emit("ADD $%d, %s, %s", m.Disp, cur, scratchAddr)
-		cur = scratchAddr
-	}
-	return cur
-}
-
 func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	ops := i.Operands
 	switch i.Opcode {
@@ -1402,7 +1377,6 @@ func (p *arm64) lowerArith(op, sop string, src, dst operand.Op, flags bool) {
 	}
 }
 
-// lowerIncDec lowers INC/DEC of a register or memory operand by 1.
 // lowerArithW is lowerArith for 32-bit operations. Register destinations use
 // the arm64 W-forms, which zero the upper 32 bits exactly as x86 does; memory
 // destinations are read-modify-written at 32-bit width.
@@ -1491,10 +1465,9 @@ func (p *arm64) lowerShift(op string, count, dst operand.Op) {
 	p.emit("%s %s, %s, %s", op, p.regOrImm(count), d, d)
 }
 
-// lowerROL lowers "ROLQ count, dst" using ROR by the two's-complement count
-// (ROR by (64-count) == ROL by count; arm64 ROR uses the low 6 bits).
 // lowerROL lowers a rotate-left of the given width as arm64's rotate-right by
-// the complementary amount; arm64 has no rotate-left.
+// the complementary amount, since arm64 has no rotate-left. ROR by (width-count)
+// equals ROL by count, and the rotate amount is taken modulo the width.
 func (p *arm64) lowerROL(count, dst operand.Op, width int) {
 	ror, neg := "ROR", "NEG"
 	if width == 32 {
@@ -1762,6 +1735,12 @@ func (p *arm64) lowerTest(op string, a, b operand.Op, width int) {
 	// discarded, so testing in either order sets the same flags.
 	if _, ok := immAsm(a); ok {
 		a, b = b, a
+	}
+	if _, ok := b.(operand.Mem); ok {
+		// x86 allows TEST m64, r64, but this lowering stages only one operand
+		// through a scratch register and would need a second for the load.
+		panic(fmt.Sprintf("arm64: %s with the memory operand second is not supported; "+
+			"swap the operands", op))
 	}
 	aReg := p.valRegW(a, width)
 	rhs := p.regOrImm(b)
