@@ -123,3 +123,187 @@ func SelLsU(a uint64, b uint64, c uint64, d uint64) uint64
 func SelMi(a uint64, b uint64, c uint64, d uint64) uint64
 
 func SelPl(a uint64, b uint64, c uint64, d uint64) uint64
+
+func SxL(x uint64) uint64
+
+func SxB(x uint64) uint64
+
+func SxBL(x uint64) uint64
+
+func SxWL(x uint64) uint64
+
+func NegL(x uint64) uint64
+
+func NotL(x uint64) uint64
+
+func NotQ(x uint64) uint64
+
+func RolL7(x uint64) uint64
+
+func RorQ9(x uint64) uint64
+
+func RorL9(x uint64) uint64
+
+func BtrQ5(x uint64) uint64
+
+func BtcQ5(x uint64) uint64
+
+func PopcntQ(x uint64) uint64
+
+func SarQ3(x uint64) uint64
+
+func SarL3(x uint64) uint64
+
+func IncL(x uint64) uint64
+
+func ShlB2(x uint64) uint64
+
+func BsfQ(x uint64) uint64
+
+func TzcntQ(x uint64) uint64
+
+func AddL(x uint64, y uint64) uint64
+
+func SubL(x uint64, y uint64) uint64
+
+func AndL(x uint64, y uint64) uint64
+
+func OrL(x uint64, y uint64) uint64
+
+func ImulL(x uint64, y uint64) uint64
+
+func XchgQ(x uint64, y uint64) uint64
+
+func LeaL(x uint64, y uint64) uint64
+
+func VecZero(dst *[16]byte)
+
+func VecCopy(dst *[32]byte, src *[32]byte)
+
+func Prop0(x uint64, y uint64) uint64
+
+func Prop1(x uint64, y uint64) uint64
+
+func Prop2(x uint64, y uint64) uint64
+
+func Prop3(x uint64, y uint64) uint64
+
+func Prop4(x uint64, y uint64) uint64
+
+func Prop5(x uint64, y uint64) uint64
+
+func Prop6(x uint64, y uint64) uint64
+
+func Prop7(x uint64, y uint64) uint64
+
+func Prop8(x uint64, y uint64) uint64
+
+func Prop9(x uint64, y uint64) uint64
+
+func Prop10(x uint64, y uint64) uint64
+
+func Prop11(x uint64, y uint64) uint64
+
+func Prop12(x uint64, y uint64) uint64
+
+func Prop13(x uint64, y uint64) uint64
+
+func Prop14(x uint64, y uint64) uint64
+
+func Prop15(x uint64, y uint64) uint64
+
+func Prop16(x uint64, y uint64) uint64
+
+func Prop17(x uint64, y uint64) uint64
+
+func Prop18(x uint64, y uint64) uint64
+
+func Prop19(x uint64, y uint64) uint64
+
+func Prop20(x uint64, y uint64) uint64
+
+func Prop21(x uint64, y uint64) uint64
+
+func Prop22(x uint64, y uint64) uint64
+
+func Prop23(x uint64, y uint64) uint64
+
+func Prop24(x uint64, y uint64) uint64
+
+func Prop25(x uint64, y uint64) uint64
+
+func Prop26(x uint64, y uint64) uint64
+
+func Prop27(x uint64, y uint64) uint64
+
+func Prop28(x uint64, y uint64) uint64
+
+func Prop29(x uint64, y uint64) uint64
+
+func Prop30(x uint64, y uint64) uint64
+
+func Prop31(x uint64, y uint64) uint64
+
+func Prop32(x uint64, y uint64) uint64
+
+func Prop33(x uint64, y uint64) uint64
+
+func Prop34(x uint64, y uint64) uint64
+
+func Prop35(x uint64, y uint64) uint64
+
+func Prop36(x uint64, y uint64) uint64
+
+func Prop37(x uint64, y uint64) uint64
+
+func Prop38(x uint64, y uint64) uint64
+
+func Prop39(x uint64, y uint64) uint64
+
+func Prop40(x uint64, y uint64) uint64
+
+func Prop41(x uint64, y uint64) uint64
+
+func Prop42(x uint64, y uint64) uint64
+
+func Prop43(x uint64, y uint64) uint64
+
+func Prop44(x uint64, y uint64) uint64
+
+func Prop45(x uint64, y uint64) uint64
+
+func Prop46(x uint64, y uint64) uint64
+
+func Prop47(x uint64, y uint64) uint64
+
+func Prop48(x uint64, y uint64) uint64
+
+func Prop49(x uint64, y uint64) uint64
+
+func Prop50(x uint64, y uint64) uint64
+
+func Prop51(x uint64, y uint64) uint64
+
+func Prop52(x uint64, y uint64) uint64
+
+func Prop53(x uint64, y uint64) uint64
+
+func Prop54(x uint64, y uint64) uint64
+
+func Prop55(x uint64, y uint64) uint64
+
+func Prop56(x uint64, y uint64) uint64
+
+func Prop57(x uint64, y uint64) uint64
+
+func Prop58(x uint64, y uint64) uint64
+
+func Prop59(x uint64, y uint64) uint64
+
+func Prop60(x uint64, y uint64) uint64
+
+func Prop61(x uint64, y uint64) uint64
+
+func Prop62(x uint64, y uint64) uint64
+
+func Prop63(x uint64, y uint64) uint64

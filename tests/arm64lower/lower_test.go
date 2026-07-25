@@ -5,9 +5,14 @@
 package arm64lower
 
 import (
+	"bytes"
+	"fmt"
 	"math/bits"
+	"strings"
 	"testing"
 	"testing/quick"
+
+	"github.com/mmcloughlin/avo/tests/arm64lower/propspec"
 )
 
 //go:generate go run asm.go -out lower_amd64.s -arm64 lower_arm64.s -stubs stub.go
@@ -427,5 +432,155 @@ func TestCopy16(t *testing.T) {
 	Copy16(&dst, &src)
 	if dst != src {
 		t.Errorf("Copy16: dst %v != src %v", dst, src)
+	}
+}
+
+// TestOpcodeCoverage exercises the extension, 32-bit ALU, rotate, bit-manipulation
+// and 128-bit move lowerings against pure-Go references.
+func TestOpcodeCoverage(t *testing.T) {
+	xs := []uint64{
+		0, 1, 2, 5, 32, 127, 128, 255, 256, 65535, 65536,
+		0xdeadbeefcafef00d, ^uint64(0), 1 << 31, 1 << 32, 1 << 63,
+		0x00ff00ff00ff00ff, 0xffffffff00000000, 0x80000000,
+	}
+	unary := []struct {
+		name string
+		got  func(uint64) uint64
+		want func(uint64) uint64
+	}{
+		{"SxL", SxL, func(x uint64) uint64 { return uint64(int64(int32(x))) }},
+		{"SxB", SxB, func(x uint64) uint64 { return uint64(int64(int8(x))) }},
+		{"SxBL", SxBL, func(x uint64) uint64 { return uint64(uint32(int32(int8(x)))) }},
+		{"SxWL", SxWL, func(x uint64) uint64 { return uint64(uint32(int32(int16(x)))) }},
+		{"NegL", NegL, func(x uint64) uint64 { return uint64(-uint32(x)) }},
+		{"NotL", NotL, func(x uint64) uint64 { return uint64(^uint32(x)) }},
+		{"NotQ", NotQ, func(x uint64) uint64 { return ^x }},
+		{"RolL7", RolL7, func(x uint64) uint64 { return uint64(bits.RotateLeft32(uint32(x), 7)) }},
+		{"RorQ9", RorQ9, func(x uint64) uint64 { return bits.RotateLeft64(x, -9) }},
+		{"RorL9", RorL9, func(x uint64) uint64 { return uint64(bits.RotateLeft32(uint32(x), -9)) }},
+		{"BtrQ5", BtrQ5, func(x uint64) uint64 { return x &^ (1 << 5) }},
+		{"BtcQ5", BtcQ5, func(x uint64) uint64 { return x ^ (1 << 5) }},
+		{"PopcntQ", PopcntQ, func(x uint64) uint64 { return uint64(bits.OnesCount64(x)) }},
+		{"SarQ3", SarQ3, func(x uint64) uint64 { return uint64(int64(x) >> 3) }},
+		{"SarL3", SarL3, func(x uint64) uint64 { return uint64(uint32(int32(x) >> 3)) }},
+		{"IncL", IncL, func(x uint64) uint64 { return uint64(uint32(x) + 1) }},
+		// x86 SHLB shifts only the addressed byte and preserves the rest.
+		{"ShlB2", ShlB2, func(x uint64) uint64 { return x&^0xff | (x&0xff)<<2&0xff }},
+		// TZCNT is defined for a zero input (returns 64); the lowering matches.
+		{"TzcntQ", TzcntQ, func(x uint64) uint64 { return uint64(bits.TrailingZeros64(x)) }},
+	}
+	for _, c := range unary {
+		t.Run(c.name, func(t *testing.T) {
+			for _, x := range xs {
+				if got, want := c.got(x), c.want(x); got != want {
+					t.Errorf("%s(%#x) = %#x, want %#x", c.name, x, got, want)
+				}
+			}
+		})
+	}
+
+	// BSF's result is architecturally undefined for a zero input, so only
+	// non-zero values are compared.
+	t.Run("BsfQ", func(t *testing.T) {
+		for _, x := range xs {
+			if x == 0 {
+				continue
+			}
+			if got, want := BsfQ(x), uint64(bits.TrailingZeros64(x)); got != want {
+				t.Errorf("BsfQ(%#x) = %d, want %d", x, got, want)
+			}
+		}
+	})
+
+	binary := []struct {
+		name string
+		got  func(uint64, uint64) uint64
+		want func(uint64, uint64) uint64
+	}{
+		{"AddL", AddL, func(x, y uint64) uint64 { return uint64(uint32(x) + uint32(y)) }},
+		{"SubL", SubL, func(x, y uint64) uint64 { return uint64(uint32(x) - uint32(y)) }},
+		{"AndL", AndL, func(x, y uint64) uint64 { return uint64(uint32(x) & uint32(y)) }},
+		{"OrL", OrL, func(x, y uint64) uint64 { return uint64(uint32(x) | uint32(y)) }},
+		{"ImulL", ImulL, func(x, y uint64) uint64 { return uint64(uint32(x) * uint32(y)) }},
+		// XchgQ swaps two registers and returns the first, which must hold y.
+		{"XchgQ", XchgQ, func(x, y uint64) uint64 { return y }},
+		{"LeaL", LeaL, func(x, y uint64) uint64 { return uint64(uint32(x) + uint32(y)*4 + 7) }},
+	}
+	for _, c := range binary {
+		t.Run(c.name, func(t *testing.T) {
+			for _, x := range xs {
+				for _, y := range xs {
+					if got, want := c.got(x, y), c.want(x, y); got != want {
+						t.Errorf("%s(%#x, %#x) = %#x, want %#x", c.name, x, y, got, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestVectorMoves covers the 128-bit MOVOU/MOVOA/PXOR lowerings.
+func TestVectorMoves(t *testing.T) {
+	var dst [16]byte
+	for i := range dst {
+		dst[i] = byte(i + 1)
+	}
+	VecZero(&dst)
+	if dst != ([16]byte{}) {
+		t.Errorf("VecZero left %v", dst)
+	}
+
+	var a, b [32]byte
+	for i := range b {
+		b[i] = byte(i * 3)
+	}
+	VecCopy(&a, &b)
+	if !bytes.Equal(a[16:], b[16:]) {
+		t.Errorf("VecCopy copied %v, want %v", a[16:], b[16:])
+	}
+	for i, v := range a[:16] {
+		if v != 0 {
+			t.Fatalf("VecCopy disturbed the low half at %d: %v", i, a[:16])
+		}
+	}
+}
+
+// TestRandomPrograms replays each generated random program's operations through
+// their pure-Go references and compares against the compiled assembly. Running
+// on amd64 validates that the references model x86 correctly; running on arm64
+// then makes any lowering divergence a test failure.
+//
+// This is the systematic counterpart to the hand-written cases above: every
+// silent miscompile found in this lowering so far (high-byte destinations,
+// sign-extending narrow loads, flags crossing a label) was discovered by
+// accident, and each is the kind of interaction these programs cover by
+// construction.
+func TestRandomPrograms(t *testing.T) {
+	inputs := []uint64{
+		0, 1, 2, 7, 0xff, 0x100, 0x7fffffff, 0x80000000, 0xffffffff,
+		1 << 63, ^uint64(0), 0xdeadbeefcafef00d, 0x00ff00ff00ff00ff,
+		0xfedcba9876543210,
+	}
+	for n := 0; n < propspec.NumPrograms; n++ {
+		prog := propspec.Program(n, propspec.ProgramLength)
+		fn := propPrograms[n]
+		names := make([]string, len(prog))
+		for i, op := range prog {
+			names[i] = propspec.Ops[op].Name
+		}
+		t.Run(fmt.Sprintf("Prop%d", n), func(t *testing.T) {
+			for _, x := range inputs {
+				for _, y := range inputs {
+					want := x
+					for _, op := range prog {
+						want = propspec.Ops[op].Ref(want, y)
+					}
+					if got := fn(x, y); got != want {
+						t.Fatalf("Prop%d(%#x, %#x) = %#x, want %#x\nprogram: %s",
+							n, x, y, got, want, strings.Join(names, " -> "))
+					}
+				}
+			}
+		})
 	}
 }

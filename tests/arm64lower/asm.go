@@ -10,9 +10,12 @@
 package main
 
 import (
+	"fmt"
+
 	. "github.com/mmcloughlin/avo/build"
 	"github.com/mmcloughlin/avo/operand"
 	"github.com/mmcloughlin/avo/reg"
+	"github.com/mmcloughlin/avo/tests/arm64lower/propspec"
 )
 
 func main() {
@@ -548,6 +551,121 @@ func main() {
 	selectCC("SelLsU", func(s, d operand.Op) { CMOVQLS(s, d) }) // unsigned <=
 	selectCC("SelMi", func(s, d operand.Op) { CMOVQMI(s, d) })  // sign set
 	selectCC("SelPl", func(s, d operand.Op) { CMOVQPL(s, d) })  // sign clear
+
+	// ---- extension, 32-bit ALU, rotates, bit ops (s2 + general coverage) ----
+
+	un := func(name string, emit func(x, dst reg.GPVirtual)) {
+		TEXT(name, NOSPLIT, "func(x uint64) uint64")
+		x, dst := GP64(), GP64()
+		Load(Param("x"), x)
+		emit(x, dst)
+		Store(dst, ReturnIndex(0))
+		RET()
+	}
+	un("SxL", func(x, d reg.GPVirtual) { MOVLQSX(x.As32(), d) })
+	un("SxB", func(x, d reg.GPVirtual) { MOVBQSX(x.As8(), d) })
+	un("SxBL", func(x, d reg.GPVirtual) { MOVBLSX(x.As8(), d.As32()) })
+	un("SxWL", func(x, d reg.GPVirtual) { MOVWLSX(x.As16(), d.As32()) })
+	un("NegL", func(x, d reg.GPVirtual) { MOVQ(x, d); NEGL(d.As32()) })
+	un("NotL", func(x, d reg.GPVirtual) { MOVQ(x, d); NOTL(d.As32()) })
+	un("NotQ", func(x, d reg.GPVirtual) { MOVQ(x, d); NOTQ(d) })
+	un("RolL7", func(x, d reg.GPVirtual) { MOVQ(x, d); ROLL(operand.U8(7), d.As32()) })
+	un("RorQ9", func(x, d reg.GPVirtual) { MOVQ(x, d); RORQ(operand.U8(9), d) })
+	un("RorL9", func(x, d reg.GPVirtual) { MOVQ(x, d); RORL(operand.U8(9), d.As32()) })
+	un("BtrQ5", func(x, d reg.GPVirtual) {
+		MOVQ(x, d)
+		n := GP64()
+		MOVQ(operand.U64(5), n)
+		BTRQ(n, d)
+	})
+	un("BtcQ5", func(x, d reg.GPVirtual) {
+		MOVQ(x, d)
+		n := GP64()
+		MOVQ(operand.U64(5), n)
+		BTCQ(n, d)
+	})
+	un("PopcntQ", func(x, d reg.GPVirtual) { POPCNTQ(x, d) })
+	un("SarQ3", func(x, d reg.GPVirtual) { MOVQ(x, d); SARQ(operand.U8(3), d) })
+	un("SarL3", func(x, d reg.GPVirtual) { MOVQ(x, d); SARL(operand.U8(3), d.As32()) })
+	un("IncL", func(x, d reg.GPVirtual) { MOVQ(x, d); INCL(d.As32()) })
+	un("ShlB2", func(x, d reg.GPVirtual) { MOVQ(x, d); SHLB(operand.U8(2), d.As8()) })
+	un("BsfQ", func(x, d reg.GPVirtual) { BSFQ(x, d) })
+	un("TzcntQ", func(x, d reg.GPVirtual) { TZCNTQ(x, d) })
+
+	bin := func(name string, emit func(x, y, dst reg.GPVirtual)) {
+		TEXT(name, NOSPLIT, "func(x, y uint64) uint64")
+		x, y, dst := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("y"), y)
+		emit(x, y, dst)
+		Store(dst, ReturnIndex(0))
+		RET()
+	}
+	bin("AddL", func(x, y, d reg.GPVirtual) { MOVQ(x, d); ADDL(y.As32(), d.As32()) })
+	bin("SubL", func(x, y, d reg.GPVirtual) { MOVQ(x, d); SUBL(y.As32(), d.As32()) })
+	bin("AndL", func(x, y, d reg.GPVirtual) { MOVQ(x, d); ANDL(y.As32(), d.As32()) })
+	bin("OrL", func(x, y, d reg.GPVirtual) { MOVQ(x, d); ORL(y.As32(), d.As32()) })
+	bin("ImulL", func(x, y, d reg.GPVirtual) { MOVQ(x, d); IMULL(y.As32(), d.As32()) })
+	bin("XchgQ", func(x, y, d reg.GPVirtual) {
+		a, b := GP64(), GP64()
+		MOVQ(x, a)
+		MOVQ(y, b)
+		XCHGQ(a, b)
+		// Return a after the swap, which must be y.
+		MOVQ(a, d)
+	})
+
+	// LeaL: 32-bit address arithmetic, truncated and zero-extended.
+	TEXT("LeaL", NOSPLIT, "func(x, y uint64) uint64")
+	{
+		x, y, d := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("y"), y)
+		LEAL(operand.Mem{Base: x, Index: y, Scale: 4, Disp: 7}, d.As32())
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
+	// VecXor: MOVOU load, PXOR against itself to zero, MOVOU store. Verifies the
+	// 128-bit move and vector-xor lowerings end to end.
+	TEXT("VecZero", NOSPLIT, "func(dst *[16]byte)")
+	{
+		dst := GP64()
+		Load(Param("dst"), dst)
+		z := XMM()
+		PXOR(z, z)
+		MOVOU(z, operand.Mem{Base: dst})
+		RET()
+	}
+
+	// VecCopy: MOVOU load + MOVOU store with a displacement on each side.
+	TEXT("VecCopy", NOSPLIT, "func(dst, src *[32]byte)")
+	{
+		dst, src := GP64(), GP64()
+		Load(Param("dst"), dst)
+		Load(Param("src"), src)
+		v := XMM()
+		MOVOU(operand.Mem{Base: src, Disp: 16}, v)
+		MOVOU(v, operand.Mem{Base: dst, Disp: 16})
+		RET()
+	}
+
+	// Randomized programs. Each chains operations from propspec, whose Go
+	// references the test replays over the same sequence. This is what catches
+	// the interaction bugs a hand-written case has to be thought of first: an
+	// operand width that only matters after a particular predecessor, or a flag
+	// producer separated from its consumer.
+	for n := 0; n < propspec.NumPrograms; n++ {
+		TEXT(fmt.Sprintf("Prop%d", n), NOSPLIT, "func(x, y uint64) uint64")
+		acc, y := GP64(), GP64()
+		Load(Param("x"), acc)
+		Load(Param("y"), y)
+		for _, op := range propspec.Program(n, propspec.ProgramLength) {
+			propspec.Ops[op].Emit(acc, y)
+		}
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
 
 	Generate()
 }

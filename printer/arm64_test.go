@@ -153,3 +153,61 @@ func TestARM64CrossLabelFlagsRejected(t *testing.T) {
 	}()
 	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
 }
+
+// TestARM64CallRejected checks that a CALL fails generation. The lowering emits
+// NOFRAME leaf functions and uses caller-saved registers (including R16/R17 and
+// the two scratch registers) without preserving them, all of which is only
+// sound while the function makes no calls.
+func TestARM64CallRejected(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("calls")
+	ctx.SignatureExpr("func()")
+	ctx.CALL(operand.LabelRef("somewhere"))
+	ctx.RET()
+
+	f, errs := ctx.Result()
+	if errs != nil {
+		t.Fatal(errs)
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected a panic for CALL, got none")
+		}
+		if msg, ok := r.(string); !ok || !strings.Contains(msg, "CALL") {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+}
+
+// TestARM64GOAMD64ConditionalsEvaluated checks that a GOAMD64 #ifdef/#else pair
+// contributes only its else arm to arm64 output. Generators emit these
+// directives as comments, so passing them through would either duplicate the
+// work or, if the comment markers are never stripped, run both arms.
+func TestARM64GOAMD64ConditionalsEvaluated(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.Function("cond")
+	ctx.SignatureExpr("func()")
+	ctx.Comment("#ifdef GOAMD64_v3")
+	ctx.TZCNTQ(reg.RAX, reg.RCX) // amd64-only arm
+	ctx.Comment("#else")
+	ctx.BSFQ(reg.RAX, reg.RDX) // the arm arm64 must take
+	ctx.Comment("#endif")
+	ctx.RET()
+
+	out := printARM64(t, ctx, printer.NewGoRunConfig())
+
+	if strings.Contains(out, "#ifdef") || strings.Contains(out, "#else") || strings.Contains(out, "#endif") {
+		t.Errorf("GOAMD64 directives survived into arm64 output:\n%s", out)
+	}
+	// BSFQ targets RDX (R2); TZCNTQ targets RCX (R1). Only the else arm should
+	// have been lowered.
+	if !strings.Contains(out, "R2") {
+		t.Errorf("else arm (BSFQ -> R2) missing from output:\n%s", out)
+	}
+	if strings.Contains(out, "R1") {
+		t.Errorf("then arm (TZCNTQ -> R1) should have been skipped:\n%s", out)
+	}
+}

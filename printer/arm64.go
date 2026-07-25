@@ -69,6 +69,19 @@ type arm64 struct {
 	constReg string
 	constVal int64
 	constOK  bool
+
+	// Cached effective address: scratchAddr currently holds addrBase +
+	// addrIndex*addrScale, so a later access to the same base/index differing
+	// only in displacement can reuse it instead of recomputing the ADD. x86's
+	// addressing lets one instruction do what arm64 needs two for, and
+	// generators lean on that heavily (a load at (base)(idx) followed by one at
+	// 8(base)(idx) is the common shape). Invalidated aggressively: by any
+	// instruction that may write scratchAddr, by writes to the base or index
+	// register, and at every label.
+	addrBase  string
+	addrIndex string
+	addrScale uint8
+	addrOK    bool
 }
 
 // NewARM64Asm constructs a printer for writing Go arm64 assembly files by
@@ -90,6 +103,10 @@ const (
 	// Scratch registers reserved for lowering; never produced by the x86 map.
 	scratchAddr = "R15" // effective-address computation for indexed/RMW operands
 	scratchVal  = "R16" // immediate materialization / RMW value
+
+	// Scratch vector register for lowerings that need one (POPCNT). x86 has
+	// only XMM0-15, which map to V0-V15, so V31 is never allocated.
+	scratchVec = "V31"
 )
 
 func (p *arm64) Print(f *ir.File) ([]byte, error) {
@@ -239,20 +256,38 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	setflags := flagProducers(nodes)
 	subwordSafe := subwordSafeEqNe(nodes)
 	p.constOK = false
+	p.addrOK = false
+	var pp goamd64Cond
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
 		case ir.Label:
 			p.constOK = false
+			p.addrOK = false // control-flow join: the cache may not hold on every edge
 			p.flush()
 			p.ensureclear()
 			p.Printf("%s:\n", n)
 		case *ir.Comment:
+			// Generators emit C preprocessor directives as comments (a later
+			// pass strips the "// "). Evaluate the GOAMD64 ones here rather than
+			// passing them through: GOAMD64_* is never defined for an arm64
+			// build, so the guarded arm is dead, and emitting it would either
+			// duplicate work or -- if the directives are never un-commented --
+			// silently run both arms.
+			if pp.consume(n.Lines) {
+				break
+			}
+			if !pp.active() {
+				break
+			}
 			p.flush()
 			p.ensureclear()
 			for _, line := range n.Lines {
 				p.Printf("\t// %s\n", line)
 			}
 		case *ir.Instruction:
+			if !pp.active() {
+				break
+			}
 			switch {
 			case n.Opcode == "JMP":
 				p.emit("JMP %s", n.Operands[0].Asm())
@@ -266,6 +301,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 				p.lower(n, setflags[idx], subwordSafe[idx])
 			}
 			p.trackConst(n)
+			p.invalidateAddrFor(n)
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
 			}
@@ -276,6 +312,66 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	p.flush()
 }
 
+// goamd64Cond evaluates #ifdef/#ifndef/#else/#endif directives that test a
+// GOAMD64_* symbol, which is never defined when building for arm64. Directives
+// naming anything else are left alone and passed through as comments, since
+// this cannot know their truth value.
+type goamd64Cond struct {
+	// stack holds one entry per open GOAMD64 conditional: whether the arm
+	// currently being read is the live one.
+	stack []bool
+	// depth counts open conditionals this evaluator is NOT tracking, so their
+	// #else/#endif are not mistaken for ones it owns.
+	depth int
+}
+
+// active reports whether the current position is inside a live arm.
+func (c *goamd64Cond) active() bool {
+	for _, live := range c.stack {
+		if !live {
+			return false
+		}
+	}
+	return true
+}
+
+// consume interprets a comment's lines as preprocessor directives, returning
+// true if they were directives this evaluator handles (and so should not be
+// printed).
+func (c *goamd64Cond) consume(lines []string) bool {
+	handled := false
+	for _, line := range lines {
+		d := strings.TrimSpace(line)
+		if !strings.HasPrefix(d, "#") {
+			continue
+		}
+		fields := strings.Fields(d)
+		switch fields[0] {
+		case "#ifdef", "#ifndef":
+			if len(fields) > 1 && strings.HasPrefix(fields[1], "GOAMD64_") {
+				// Undefined on arm64: #ifdef selects the else arm, #ifndef the then arm.
+				c.stack = append(c.stack, fields[0] == "#ifndef")
+				handled = true
+				continue
+			}
+			c.depth++
+		case "#else":
+			if c.depth == 0 && len(c.stack) > 0 {
+				c.stack[len(c.stack)-1] = !c.stack[len(c.stack)-1]
+				handled = true
+			}
+		case "#endif":
+			if c.depth > 0 {
+				c.depth--
+			} else if len(c.stack) > 0 {
+				c.stack = c.stack[:len(c.stack)-1]
+				handled = true
+			}
+		}
+	}
+	return handled
+}
+
 // emit buffers a single lowered arm64 instruction. The block is column-aligned
 // and written by flush(), matching the goasm printer's layout (and asmfmt).
 func (p *arm64) emit(format string, args ...interface{}) {
@@ -284,8 +380,45 @@ func (p *arm64) emit(format string, args ...interface{}) {
 	if i := strings.IndexByte(line, ' '); i >= 0 {
 		op, operands = line[:i], line[i+1:]
 	}
+	// The lowering writes the destination last, so scratchAddr appearing there
+	// means this instruction may overwrite the cached address. A store's address
+	// operand also lands last, which merely costs us the optimization.
+	if p.addrOK && lastOperandIs(operands, scratchAddr) {
+		p.addrOK = false
+	}
 	p.pending = append(p.pending, [2]string{op, operands})
 	p.clear = false
+}
+
+// lastOperandIs reports whether the final comma-separated operand is exactly
+// the named register.
+func lastOperandIs(operands, name string) bool {
+	if operands == "" {
+		return false
+	}
+	last := operands
+	if i := strings.LastIndex(operands, ","); i >= 0 {
+		last = operands[i+1:]
+	}
+	return strings.TrimSpace(last) == name
+}
+
+// invalidateAddrFor drops the cached effective address if the instruction wrote
+// either of the registers it was computed from.
+func (p *arm64) invalidateAddrFor(in *ir.Instruction) {
+	if !p.addrOK {
+		return
+	}
+	for _, out := range in.Outputs {
+		r, ok := out.(reg.Register)
+		if !ok {
+			continue
+		}
+		if n := rename(r); n == p.addrBase || n == p.addrIndex {
+			p.addrOK = false
+			return
+		}
+	}
 }
 
 // flush writes the buffered instructions with operands aligned to a common
@@ -456,6 +589,7 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 		return fmt.Sprintf("(%s)", rename(m.Base))
 	}
 	sh := log2scale(m.Scale)
+	base, index := rename(m.Base), rename(m.Index)
 	// arm64 scalar loads/stores can fold base+index addressing into the
 	// instruction, saving the separate effective-address ADD that x86's richer
 	// addressing otherwise costs us on every access. The architecture allows it
@@ -464,14 +598,29 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 	// width == 0 means the caller cannot use the folded form (e.g. FMOVQ).
 	if m.Disp == 0 && (m.Scale == 1 || (width > 0 && int(m.Scale) == width)) {
 		if sh == 0 {
-			return fmt.Sprintf("(%s)(%s)", rename(m.Base), rename(m.Index))
+			return fmt.Sprintf("(%s)(%s)", base, index)
 		}
-		return fmt.Sprintf("(%s)(%s<<%d)", rename(m.Base), rename(m.Index), sh)
+		return fmt.Sprintf("(%s)(%s<<%d)", base, index, sh)
+	}
+
+	// Otherwise the effective address goes into scratchAddr. Reuse it when it
+	// already holds this base+index from an earlier access.
+	if p.addrOK && p.addrBase == base && p.addrIndex == index && p.addrScale == m.Scale {
+		if m.Disp != 0 {
+			return fmt.Sprintf("%d(%s)", m.Disp, scratchAddr)
+		}
+		return fmt.Sprintf("(%s)", scratchAddr)
 	}
 	if sh == 0 {
-		p.emit("ADD %s, %s, %s", rename(m.Index), rename(m.Base), scratchAddr)
+		p.emit("ADD %s, %s, %s", index, base, scratchAddr)
 	} else {
-		p.emit("ADD %s<<%d, %s, %s", rename(m.Index), sh, rename(m.Base), scratchAddr)
+		p.emit("ADD %s<<%d, %s, %s", index, sh, base, scratchAddr)
+	}
+	// The ADD above invalidated any previous cache via emit; record the new one.
+	// A base or index that is itself scratchAddr would be destroyed by the ADD,
+	// so never cache those.
+	if base != scratchAddr && index != scratchAddr {
+		p.addrBase, p.addrIndex, p.addrScale, p.addrOK = base, index, m.Scale, true
 	}
 	if m.Disp != 0 {
 		return fmt.Sprintf("%d(%s)", m.Disp, scratchAddr)
@@ -522,6 +671,23 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("MOVH %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVWQZX": // load/extend uint16, zero-extend
 		p.emit("MOVHU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
+	case "MOVLQSX": // load/extend int32, sign-extend
+		p.emit("MOVW %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
+	case "MOVLQZX": // load/extend uint32, zero-extend
+		p.emit("MOVWU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
+	case "MOVBQSX": // load/extend int8, sign-extend
+		p.emit("MOVB %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
+	case "MOVBLSX", "MOVWLSX":
+		// Sign-extend a byte/halfword into a 32-bit destination. x86 leaves the
+		// upper 32 bits of the register zeroed, so extend to 64 and then clear
+		// the top half.
+		ld := "MOVB"
+		if i.Opcode == "MOVWLSX" {
+			ld = "MOVH"
+		}
+		d := operandReg(ops[1])
+		p.emit("%s %s, %s", ld, p.srcAsm(ops[0]), d)
+		p.emit("MOVWU %s, %s", d, d)
 	case "MOVBQZX": // load/extend uint8, zero-extend
 		p.emit("MOVBU %s, %s", p.srcAsm(ops[0]), operandReg(ops[1]))
 	case "MOVUPS", "MOVOU", "MOVOA":
@@ -617,8 +783,12 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.lowerIncDec("SUBW", "SUBSW", ops[0], flags)
 	case "NEGQ":
 		p.emit("NEG %s, %s", operandReg(ops[0]), operandReg(ops[0]))
+	case "NEGL":
+		p.emit("NEGW %s, %s", operandReg(ops[0]), operandReg(ops[0]))
 	case "NOTQ":
 		p.emit("MVN %s, %s", operandReg(ops[0]), operandReg(ops[0]))
+	case "NOTL":
+		p.emit("MVNW %s, %s", operandReg(ops[0]), operandReg(ops[0]))
 	case "SHRQ":
 		p.lowerShift("LSR", ops[0], ops[1])
 	case "SHLQ":
@@ -642,7 +812,13 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.emit("LSLW %s, %s, %s", p.regOrImm(ops[0]), d, scratchVal)
 		p.emit("BFI $0, %s, $8, %s", scratchVal, d)
 	case "ROLQ":
-		p.lowerROL(ops[0], ops[1])
+		p.lowerROL(ops[0], ops[1], 64)
+	case "ROLL":
+		p.lowerROL(ops[0], ops[1], 32)
+	case "RORQ":
+		p.lowerShift("ROR", ops[0], ops[1])
+	case "RORL":
+		p.lowerShift("RORW", ops[0], ops[1])
 
 	// ---- BMI2 flag-free shifts/rotate: SHIFTX count, src, dst ----
 	// arm64 register shifts are already flag-free and take an arbitrary count
@@ -664,6 +840,50 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		d := operandReg(ops[1])
 		p.lowerLEA(ops[0].(operand.Mem), d)
 		p.emit("MOVWU %s, %s", d, d)
+
+	case "IMULL":
+		// 32-bit two-operand multiply; the W-form zeroes the upper half as x86 does.
+		p.emit("MULW %s, %s, %s", p.valReg(ops[0]), operandReg(ops[1]), operandReg(ops[1]))
+
+	case "POPCNTQ":
+		// arm64 has no scalar population count: move to a vector register, count
+		// bits per byte, then sum the bytes across the vector.
+		src := p.valReg(ops[0])
+		dst := operandReg(ops[1])
+		f := "F" + scratchVec[1:]
+		p.emit("FMOVD %s, %s", src, f)
+		p.emit("VCNT %s.B8, %s.B8", scratchVec, scratchVec)
+		p.emit("VUADDLV %s.B8, %s", scratchVec, scratchVec)
+		p.emit("FMOVD %s, %s", f, dst)
+
+	case "XCHGQ":
+		// Register swap. x86's memory form is implicitly atomic, which this
+		// lowering would not reproduce, so it is not accepted.
+		if _, ok := ops[0].(operand.Mem); ok {
+			panic("arm64: XCHGQ with a memory operand is atomic on x86 and is not supported")
+		}
+		if _, ok := ops[1].(operand.Mem); ok {
+			panic("arm64: XCHGQ with a memory operand is atomic on x86 and is not supported")
+		}
+		a, b := operandReg(ops[0]), operandReg(ops[1])
+		if a != b {
+			p.emit("MOVD %s, %s", a, scratchVal)
+			p.emit("MOVD %s, %s", b, a)
+			p.emit("MOVD %s, %s", scratchVal, b)
+		}
+
+	case "BTRQ", "BTCQ":
+		// Clear/complement bit n. x86 also reports the previous bit in CF; no
+		// consumer can read that here because flagSetter rejects these opcodes.
+		op := "BIC"
+		if i.Opcode == "BTCQ" {
+			op = "EOR"
+		}
+		a := operandReg(ops[0])
+		b := operandReg(ops[1])
+		p.emit("MOVD $1, %s", scratchVal)
+		p.emit("LSL %s, %s, %s", a, scratchVal, scratchVal)
+		p.emit("%s %s, %s, %s", op, scratchVal, b, b)
 
 	case "BTSQ":
 		a := operandReg(ops[0])
@@ -1045,18 +1265,26 @@ func (p *arm64) lowerShift(op string, count, dst operand.Op) {
 
 // lowerROL lowers "ROLQ count, dst" using ROR by the two's-complement count
 // (ROR by (64-count) == ROL by count; arm64 ROR uses the low 6 bits).
-func (p *arm64) lowerROL(count, dst operand.Op) {
+// lowerROL lowers a rotate-left of the given width as arm64's rotate-right by
+// the complementary amount; arm64 has no rotate-left.
+func (p *arm64) lowerROL(count, dst operand.Op, width int) {
+	ror, neg := "ROR", "NEG"
+	if width == 32 {
+		ror, neg = "RORW", "NEGW"
+	}
 	d := operandReg(dst)
-	if imm, ok := immAsm(count); ok {
-		var n int
-		if _, err := fmt.Sscanf(imm, "$%d", &n); err != nil {
-			panic("arm64: bad ROL immediate " + imm)
+	if _, isImm := immAsm(count); isImm {
+		// immVal parses with a base-aware conversion; avo renders immediates in
+		// hex, which a "$%d" scan would silently truncate to 0.
+		n, ok := immVal(count)
+		if !ok {
+			panic("arm64: bad ROL immediate")
 		}
-		p.emit("ROR $%d, %s, %s", (64-n)&63, d, d)
+		p.emit("%s $%d, %s, %s", ror, (int64(width)-n)&int64(width-1), d, d)
 		return
 	}
-	p.emit("NEG %s, %s", operandReg(count), scratchVal)
-	p.emit("ROR %s, %s, %s", scratchVal, d, d)
+	p.emit("%s %s, %s", neg, operandReg(count), scratchVal)
+	p.emit("%s %s, %s, %s", ror, scratchVal, d, d)
 }
 
 // srcRegInto returns a register name holding op's value, loading a memory operand

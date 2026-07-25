@@ -656,3 +656,1554 @@ TEXT ·SelPl(SB), NOSPLIT, $0-40
 	CMOVQPL DX, BX
 	MOVQ    BX, ret+32(FP)
 	RET
+
+// func SxL(x uint64) uint64
+TEXT ·SxL(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVLQSX AX, AX
+	MOVQ    AX, ret+8(FP)
+	RET
+
+// func SxB(x uint64) uint64
+TEXT ·SxB(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVBQSX AL, AX
+	MOVQ    AX, ret+8(FP)
+	RET
+
+// func SxBL(x uint64) uint64
+TEXT ·SxBL(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVBLSX AL, AX
+	MOVQ    AX, ret+8(FP)
+	RET
+
+// func SxWL(x uint64) uint64
+TEXT ·SxWL(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVWLSX AX, AX
+	MOVQ    AX, ret+8(FP)
+	RET
+
+// func NegL(x uint64) uint64
+TEXT ·NegL(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	NEGL AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func NotL(x uint64) uint64
+TEXT ·NotL(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	NOTL AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func NotQ(x uint64) uint64
+TEXT ·NotQ(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	NOTQ AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func RolL7(x uint64) uint64
+TEXT ·RolL7(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	ROLL $0x07, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func RorQ9(x uint64) uint64
+TEXT ·RorQ9(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	RORQ $0x09, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func RorL9(x uint64) uint64
+TEXT ·RorL9(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	RORL $0x09, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func BtrQ5(x uint64) uint64
+TEXT ·BtrQ5(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	MOVQ $0x0000000000000005, CX
+	BTRQ CX, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func BtcQ5(x uint64) uint64
+TEXT ·BtcQ5(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	MOVQ $0x0000000000000005, CX
+	BTCQ CX, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func PopcntQ(x uint64) uint64
+// Requires: POPCNT
+TEXT ·PopcntQ(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	POPCNTQ AX, AX
+	MOVQ    AX, ret+8(FP)
+	RET
+
+// func SarQ3(x uint64) uint64
+TEXT ·SarQ3(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	SARQ $0x03, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func SarL3(x uint64) uint64
+TEXT ·SarL3(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	SARL $0x03, AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func IncL(x uint64) uint64
+TEXT ·IncL(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	INCL AX
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func ShlB2(x uint64) uint64
+TEXT ·ShlB2(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	SHLB $0x02, AL
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func BsfQ(x uint64) uint64
+TEXT ·BsfQ(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	BSFQ AX, CX
+	MOVQ CX, ret+8(FP)
+	RET
+
+// func TzcntQ(x uint64) uint64
+// Requires: BMI
+TEXT ·TzcntQ(SB), NOSPLIT, $0-16
+	MOVQ   x+0(FP), AX
+	TZCNTQ AX, AX
+	MOVQ   AX, ret+8(FP)
+	RET
+
+// func AddL(x uint64, y uint64) uint64
+TEXT ·AddL(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ y+8(FP), CX
+	ADDL CX, AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func SubL(x uint64, y uint64) uint64
+TEXT ·SubL(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ y+8(FP), CX
+	SUBL CX, AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func AndL(x uint64, y uint64) uint64
+TEXT ·AndL(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ y+8(FP), CX
+	ANDL CX, AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func OrL(x uint64, y uint64) uint64
+TEXT ·OrL(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ y+8(FP), CX
+	ORL  CX, AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func ImulL(x uint64, y uint64) uint64
+TEXT ·ImulL(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  y+8(FP), CX
+	IMULL CX, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func XchgQ(x uint64, y uint64) uint64
+TEXT ·XchgQ(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  y+8(FP), CX
+	MOVQ  CX, CX
+	XCHGQ AX, CX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func LeaL(x uint64, y uint64) uint64
+TEXT ·LeaL(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ y+8(FP), CX
+	LEAL 7(AX)(CX*4), AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func VecZero(dst *[16]byte)
+// Requires: SSE2
+TEXT ·VecZero(SB), NOSPLIT, $0-8
+	MOVQ  dst+0(FP), AX
+	PXOR  X0, X0
+	MOVOU X0, (AX)
+	RET
+
+// func VecCopy(dst *[32]byte, src *[32]byte)
+// Requires: SSE2
+TEXT ·VecCopy(SB), NOSPLIT, $0-16
+	MOVQ  dst+0(FP), AX
+	MOVQ  src+8(FP), CX
+	MOVOU 16(CX), X0
+	MOVOU X0, 16(AX)
+	RET
+
+// func Prop0(x uint64, y uint64) uint64
+TEXT ·Prop0(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SARQ    $0x05, AX
+	ROLL    $0x05, AX
+	ANDL    CX, AX
+	XORQ    AX, AX
+	SARQ    $0x05, AX
+	SHLB    $0x02, AL
+	XORQ    AX, AX
+	NEGQ    AX
+	ORQ     CX, AX
+	MOVWQZX AX, AX
+	ANDQ    CX, AX
+	MOVL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop1(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop1(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	XORQ    AX, AX
+	ROLQ    $0x0d, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	XORQ    CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	NOTQ    AX
+	ROLQ    $0x0d, AX
+	MOVLQSX AX, AX
+	ANDQ    CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	POPCNTQ AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop2(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop2(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	NEGQ    AX
+	ADDL    CX, AX
+	MOVL    CX, AX
+	MOVWQZX AX, AX
+	ROLQ    $0x0d, AX
+	SUBL    CX, AX
+	IMULQ   CX, AX
+	MOVB    CL, AL
+	BSWAPL  AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ADDB    CL, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop3(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop3(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	MOVLQSX AX, AX
+	SUBQ    CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	MOVB    CL, AL
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SHLQ    $0x03, AX
+	ADDB    CL, AL
+	MOVWQZX AX, AX
+	TZCNTQ  AX, AX
+	IMULL   CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop4(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop4(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ROLL    $0x05, AX
+	ROLL    $0x05, AX
+	IMULQ   CX, AX
+	ADDQ    CX, AX
+	MOVWQZX AX, AX
+	XORQ    AX, AX
+	NOTQ    AX
+	SHLQ    $0x03, AX
+	ADDQ    CX, AX
+	SHRQ    $0x07, AX
+	TZCNTQ  AX, AX
+	ADDQ    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop5(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop5(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ANDL    CX, AX
+	SHRQ    $0x07, AX
+	SHLL    $0x09, AX
+	SHLL    $0x09, AX
+	XORQ    AX, AX
+	IMULL   CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SUBL    CX, AX
+	TZCNTQ  AX, AX
+	SHLL    $0x09, AX
+	ROLQ    $0x0d, AX
+	MOVB    CL, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop6(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop6(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	MOVL    CX, AX
+	SHLB    $0x02, AL
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	TZCNTQ  AX, AX
+	ORQ     CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	IMULL   CX, AX
+	MOVLQSX AX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	SARQ    $0x05, AX
+	SHRQ    $0x07, AX
+	MOVLQSX AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop7(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop7(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SHLL    $0x09, AX
+	ANDQ    CX, AX
+	IMULL   CX, AX
+	ADDL    CX, AX
+	ADDQ    CX, AX
+	SUBL    CX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	NEGQ    AX
+	ROLQ    $0x0d, AX
+	ADDQ    CX, AX
+	ROLL    $0x05, AX
+	MOVLQSX AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop8(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop8(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ADDL    CX, AX
+	ROLL    $0x05, AX
+	ADDL    CX, AX
+	NEGQ    AX
+	MOVB    CL, AL
+	ADDB    CL, AL
+	POPCNTQ AX, AX
+	SHLL    $0x09, AX
+	IMULQ   CX, AX
+	ANDQ    CX, AX
+	XORQ    AX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop9(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop9(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ADDL    CX, AX
+	ADDB    CL, AL
+	IMULL   CX, AX
+	ADDB    CL, AL
+	ROLL    $0x05, AX
+	SUBQ    CX, AX
+	NEGQ    AX
+	POPCNTQ AX, AX
+	ADDL    CX, AX
+	IMULL   CX, AX
+	SHLB    $0x02, AL
+	NOTQ    AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop10(x uint64, y uint64) uint64
+// Requires: BMI, POPCNT
+TEXT ·Prop10(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	IMULQ   CX, AX
+	POPCNTQ AX, AX
+	ADDL    CX, AX
+	TZCNTQ  AX, AX
+	ADDB    CL, AL
+	ROLQ    $0x0d, AX
+	SUBL    CX, AX
+	IMULQ   CX, AX
+	POPCNTQ AX, AX
+	IMULQ   CX, AX
+	NOTQ    AX
+	ADDB    CL, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop11(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop11(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ANDL    CX, AX
+	NOTQ    AX
+	POPCNTQ AX, AX
+	ROLL    $0x05, AX
+	ADDL    CX, AX
+	ROLL    $0x05, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	SARQ    $0x05, AX
+	MOVB    CL, AL
+	IMULL   CX, AX
+	POPCNTQ AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop12(x uint64, y uint64) uint64
+// Requires: BMI, CMOV, POPCNT
+TEXT ·Prop12(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBQ    CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	TZCNTQ  AX, AX
+	NOTQ    AX
+	SUBQ    CX, AX
+	XORQ    CX, AX
+	ADDQ    CX, AX
+	POPCNTQ AX, AX
+	MOVLQSX AX, AX
+	IMULQ   CX, AX
+	SHLB    $0x02, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop13(x uint64, y uint64) uint64
+TEXT ·Prop13(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ANDQ    CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	IMULQ   CX, AX
+	ADDQ    CX, AX
+	XORQ    AX, AX
+	ANDQ    CX, AX
+	MOVWQZX AX, AX
+	SUBL    CX, AX
+	ORQ     CX, AX
+	SHLQ    $0x03, AX
+	ANDQ    CX, AX
+	MOVL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop14(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop14(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBL    CX, AX
+	SHRQ    $0x07, AX
+	ADDL    CX, AX
+	MOVWQZX AX, AX
+	ROLQ    $0x0d, AX
+	SHLQ    $0x03, AX
+	ADDB    CL, AL
+	POPCNTQ AX, AX
+	NEGQ    AX
+	XORQ    CX, AX
+	SUBQ    CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop15(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop15(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	POPCNTQ AX, AX
+	ROLQ    $0x0d, AX
+	SHLQ    $0x03, AX
+	NOTQ    AX
+	ANDQ    CX, AX
+	MOVWQZX AX, AX
+	POPCNTQ AX, AX
+	ROLL    $0x05, AX
+	SHLQ    $0x03, AX
+	SUBL    CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	IMULQ   CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop16(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop16(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBQ    CX, AX
+	ANDL    CX, AX
+	BSWAPL  AX
+	ROLL    $0x05, AX
+	MOVWQZX AX, AX
+	ANDQ    CX, AX
+	ROLL    $0x05, AX
+	SHLL    $0x09, AX
+	SHLL    $0x09, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ADDQ    CX, AX
+	ANDL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop17(x uint64, y uint64) uint64
+TEXT ·Prop17(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ORQ     CX, AX
+	MOVWQZX AX, AX
+	ANDL    CX, AX
+	SUBL    CX, AX
+	ROLQ    $0x0d, AX
+	ORQ     CX, AX
+	BSWAPL  AX
+	SHRQ    $0x07, AX
+	SHRQ    $0x07, AX
+	XORQ    AX, AX
+	SHRQ    $0x07, AX
+	NOTQ    AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop18(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop18(SB), NOSPLIT, $0-24
+	MOVQ   x+0(FP), AX
+	MOVQ   y+8(FP), CX
+	ORQ    CX, AX
+	IMULL  CX, AX
+	SHRQ   $0x07, AX
+	NOTQ   AX
+	ROLQ   $0x0d, AX
+	SUBL   CX, AX
+	MOVL   CX, AX
+	XORQ   CX, AX
+	IMULQ  CX, AX
+	SUBL   CX, AX
+	MOVL   CX, AX
+	TZCNTQ AX, AX
+	MOVQ   AX, ret+16(FP)
+	RET
+
+// func Prop19(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop19(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ADDQ    CX, AX
+	SHLQ    $0x03, AX
+	SHLL    $0x09, AX
+	ROLL    $0x05, AX
+	ANDQ    CX, AX
+	ADDL    CX, AX
+	ROLL    $0x05, AX
+	ROLQ    $0x0d, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ADDL    CX, AX
+	SHLL    $0x09, AX
+	XORQ    AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop20(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop20(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ROLL    $0x05, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	ADDQ    CX, AX
+	MOVWQZX AX, AX
+	SUBQ    CX, AX
+	NEGQ    AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SARQ    $0x05, AX
+	ADDL    CX, AX
+	IMULQ   CX, AX
+	SHRQ    $0x07, AX
+	SUBL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop21(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop21(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SARQ    $0x05, AX
+	SHLL    $0x09, AX
+	BSWAPL  AX
+	MOVLQSX AX, AX
+	SUBL    CX, AX
+	SARQ    $0x05, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SARQ    $0x05, AX
+	SUBQ    CX, AX
+	SHLL    $0x09, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	IMULQ   CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop22(x uint64, y uint64) uint64
+TEXT ·Prop22(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  y+8(FP), CX
+	ANDQ  CX, AX
+	SHLB  $0x02, AL
+	ANDQ  CX, AX
+	SARQ  $0x05, AX
+	IMULQ CX, AX
+	MOVB  CL, AL
+	SHLL  $0x09, AX
+	ANDQ  CX, AX
+	SARQ  $0x05, AX
+	ANDL  CX, AX
+	ORQ   CX, AX
+	ADDL  CX, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func Prop23(x uint64, y uint64) uint64
+TEXT ·Prop23(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ANDL    CX, AX
+	MOVL    CX, AX
+	ROLQ    $0x0d, AX
+	ORQ     CX, AX
+	IMULQ   CX, AX
+	NOTQ    AX
+	MOVLQSX AX, AX
+	SHRQ    $0x07, AX
+	SHLB    $0x02, AL
+	SHLB    $0x02, AL
+	ANDQ    CX, AX
+	SHLQ    $0x03, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop24(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop24(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	IMULL   CX, AX
+	ROLQ    $0x0d, AX
+	POPCNTQ AX, AX
+	BSWAPL  AX
+	SUBL    CX, AX
+	MOVWQZX AX, AX
+	ADDQ    CX, AX
+	MOVL    CX, AX
+	SARQ    $0x05, AX
+	POPCNTQ AX, AX
+	NEGQ    AX
+	MOVL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop25(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop25(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	CMPQ    AX, CX
+	SETLT   AL
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ADDB    CL, AL
+	SHLL    $0x09, AX
+	MOVB    CL, AL
+	ROLQ    $0x0d, AX
+	ANDQ    CX, AX
+	BSWAPL  AX
+	NOTQ    AX
+	XORQ    AX, AX
+	SHLB    $0x02, AL
+	BSWAPL  AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop26(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop26(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	NOTQ    AX
+	CMPQ    AX, CX
+	SETLT   AL
+	MOVB    CL, AL
+	MOVLQSX AX, AX
+	BSWAPL  AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	MOVLQSX AX, AX
+	MOVB    CL, AL
+	SHLQ    $0x03, AX
+	SHLQ    $0x03, AX
+	ANDL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop27(x uint64, y uint64) uint64
+// Requires: BMI, POPCNT
+TEXT ·Prop27(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	TZCNTQ  AX, AX
+	ADDQ    CX, AX
+	TZCNTQ  AX, AX
+	XORQ    AX, AX
+	POPCNTQ AX, AX
+	SUBQ    CX, AX
+	ROLQ    $0x0d, AX
+	IMULL   CX, AX
+	IMULQ   CX, AX
+	ROLQ    $0x0d, AX
+	ADDB    CL, AL
+	ADDB    CL, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop28(x uint64, y uint64) uint64
+TEXT ·Prop28(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	MOVWQZX AX, AX
+	ROLQ    $0x0d, AX
+	ORQ     CX, AX
+	SARQ    $0x05, AX
+	XORQ    CX, AX
+	ANDQ    CX, AX
+	IMULQ   CX, AX
+	ADDB    CL, AL
+	XORQ    AX, AX
+	NEGQ    AX
+	NOTQ    AX
+	SUBQ    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop29(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop29(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ROLL    $0x05, AX
+	POPCNTQ AX, AX
+	ANDL    CX, AX
+	SHLL    $0x09, AX
+	XORQ    AX, AX
+	SARQ    $0x05, AX
+	XORQ    CX, AX
+	NEGQ    AX
+	SHLL    $0x09, AX
+	SHRQ    $0x07, AX
+	MOVB    CL, AL
+	SHLB    $0x02, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop30(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop30(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SHLL    $0x09, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ROLL    $0x05, AX
+	ROLQ    $0x0d, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ANDL    CX, AX
+	IMULQ   CX, AX
+	SHLB    $0x02, AL
+	ORQ     CX, AX
+	ROLL    $0x05, AX
+	SHLQ    $0x03, AX
+	ANDL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop31(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop31(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ORQ     CX, AX
+	SHLB    $0x02, AL
+	XORQ    CX, AX
+	SHRQ    $0x07, AX
+	ROLQ    $0x0d, AX
+	ADDB    CL, AL
+	ORQ     CX, AX
+	ROLL    $0x05, AX
+	SARQ    $0x05, AX
+	TZCNTQ  AX, AX
+	ORQ     CX, AX
+	MOVWQZX AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop32(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop32(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	IMULL   CX, AX
+	SHLB    $0x02, AL
+	NOTQ    AX
+	ANDL    CX, AX
+	NEGQ    AX
+	MOVWQZX AX, AX
+	MOVB    CL, AL
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ADDL    CX, AX
+	SHLB    $0x02, AL
+	ROLQ    $0x0d, AX
+	MOVWQZX AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop33(x uint64, y uint64) uint64
+TEXT ·Prop33(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	IMULQ   CX, AX
+	SHLQ    $0x03, AX
+	MOVB    CL, AL
+	MOVLQSX AX, AX
+	SHRQ    $0x07, AX
+	SHRQ    $0x07, AX
+	ROLQ    $0x0d, AX
+	SHRQ    $0x07, AX
+	ADDL    CX, AX
+	MOVL    CX, AX
+	ROLL    $0x05, AX
+	SHLL    $0x09, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop34(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop34(SB), NOSPLIT, $0-24
+	MOVQ   x+0(FP), AX
+	MOVQ   y+8(FP), CX
+	ORQ    CX, AX
+	SARQ   $0x05, AX
+	MOVL   CX, AX
+	ADDQ   CX, AX
+	BSWAPL AX
+	ADDB   CL, AL
+	BSWAPL AX
+	SHLB   $0x02, AL
+	MOVL   CX, AX
+	TZCNTQ AX, AX
+	ANDL   CX, AX
+	SUBL   CX, AX
+	MOVQ   AX, ret+16(FP)
+	RET
+
+// func Prop35(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop35(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	POPCNTQ AX, AX
+	ORQ     CX, AX
+	ADDQ    CX, AX
+	MOVL    CX, AX
+	POPCNTQ AX, AX
+	MOVWQZX AX, AX
+	ROLQ    $0x0d, AX
+	SHLQ    $0x03, AX
+	XORQ    CX, AX
+	SHRQ    $0x07, AX
+	SUBQ    CX, AX
+	SHLB    $0x02, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop36(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop36(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBL    CX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	ROLL    $0x05, AX
+	MOVWQZX AX, AX
+	NOTQ    AX
+	TZCNTQ  AX, AX
+	SARQ    $0x05, AX
+	ROLQ    $0x0d, AX
+	NOTQ    AX
+	SHLL    $0x09, AX
+	TZCNTQ  AX, AX
+	MOVL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop37(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop37(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SHRQ    $0x07, AX
+	IMULL   CX, AX
+	ADDQ    CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SUBL    CX, AX
+	ADDL    CX, AX
+	MOVL    CX, AX
+	ADDB    CL, AL
+	ANDQ    CX, AX
+	SHLQ    $0x03, AX
+	SARQ    $0x05, AX
+	SHLL    $0x09, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop38(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop38(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	IMULL   CX, AX
+	POPCNTQ AX, AX
+	MOVB    CL, AL
+	SUBL    CX, AX
+	MOVB    CL, AL
+	POPCNTQ AX, AX
+	SHRQ    $0x07, AX
+	MOVB    CL, AL
+	ORQ     CX, AX
+	ANDL    CX, AX
+	SHLL    $0x09, AX
+	BSWAPL  AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop39(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop39(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ADDL    CX, AX
+	MOVWQZX AX, AX
+	TZCNTQ  AX, AX
+	NEGQ    AX
+	BSWAPL  AX
+	SARQ    $0x05, AX
+	IMULQ   CX, AX
+	ANDQ    CX, AX
+	TZCNTQ  AX, AX
+	ANDL    CX, AX
+	MOVWQZX AX, AX
+	SARQ    $0x05, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop40(x uint64, y uint64) uint64
+TEXT ·Prop40(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ADDQ    CX, AX
+	MOVWQZX AX, AX
+	MOVB    CL, AL
+	IMULQ   CX, AX
+	ADDB    CL, AL
+	IMULQ   CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	XORQ    CX, AX
+	NEGQ    AX
+	NOTQ    AX
+	SUBQ    CX, AX
+	ANDQ    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop41(x uint64, y uint64) uint64
+// Requires: BMI, POPCNT
+TEXT ·Prop41(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SARQ    $0x05, AX
+	SHLQ    $0x03, AX
+	XORQ    AX, AX
+	BSWAPL  AX
+	SHLB    $0x02, AL
+	MOVWQZX AX, AX
+	MOVWQZX AX, AX
+	TZCNTQ  AX, AX
+	NEGQ    AX
+	NOTQ    AX
+	POPCNTQ AX, AX
+	SHLB    $0x02, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop42(x uint64, y uint64) uint64
+TEXT ·Prop42(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SHLB    $0x02, AL
+	SHLL    $0x09, AX
+	MOVL    CX, AX
+	MOVLQSX AX, AX
+	ROLL    $0x05, AX
+	ORQ     CX, AX
+	XORQ    CX, AX
+	SARQ    $0x05, AX
+	SARQ    $0x05, AX
+	ROLL    $0x05, AX
+	XORQ    CX, AX
+	ADDB    CL, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop43(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop43(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	MOVLQSX AX, AX
+	ANDL    CX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	ADDB    CL, AL
+	SHLL    $0x09, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ADDL    CX, AX
+	XORQ    AX, AX
+	SHLQ    $0x03, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	XORQ    AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop44(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop44(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	ANDQ    CX, AX
+	ADDL    CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	ADDB    CL, AL
+	MOVB    CL, AL
+	ANDQ    CX, AX
+	IMULQ   CX, AX
+	SHLL    $0x09, AX
+	ADDQ    CX, AX
+	XORQ    CX, AX
+	SUBQ    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop45(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop45(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBL    CX, AX
+	NEGQ    AX
+	CMPQ    AX, CX
+	SETLT   AL
+	ADDQ    CX, AX
+	ADDB    CL, AL
+	ROLQ    $0x0d, AX
+	ADDL    CX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SARQ    $0x05, AX
+	XORQ    AX, AX
+	SARQ    $0x05, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop46(x uint64, y uint64) uint64
+TEXT ·Prop46(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	NEGQ    AX
+	ANDL    CX, AX
+	XORQ    AX, AX
+	MOVLQSX AX, AX
+	IMULL   CX, AX
+	NEGQ    AX
+	IMULL   CX, AX
+	ADDL    CX, AX
+	NEGQ    AX
+	BSWAPL  AX
+	SHLB    $0x02, AL
+	MOVB    CL, AL
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop47(x uint64, y uint64) uint64
+TEXT ·Prop47(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  y+8(FP), CX
+	NOTQ  AX
+	ADDB  CL, AL
+	SARQ  $0x05, AX
+	ANDQ  CX, AX
+	IMULQ CX, AX
+	NEGQ  AX
+	ROLL  $0x05, AX
+	SHRQ  $0x07, AX
+	IMULQ CX, AX
+	XORQ  CX, AX
+	ADDL  CX, AX
+	SARQ  $0x05, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func Prop48(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop48(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	IMULQ   CX, AX
+	SHLQ    $0x03, AX
+	ADDL    CX, AX
+	XORQ    CX, AX
+	NEGQ    AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	IMULQ   CX, AX
+	ADDB    CL, AL
+	ADDL    CX, AX
+	MOVLQSX AX, AX
+	POPCNTQ AX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop49(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop49(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	MOVLQSX AX, AX
+	SHLL    $0x09, AX
+	NOTQ    AX
+	CMPQ    AX, CX
+	SETLT   AL
+	SHLB    $0x02, AL
+	ROLQ    $0x0d, AX
+	ADDQ    CX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	NEGQ    AX
+	SHRQ    $0x07, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	ANDL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop50(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop50(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ADDL    CX, AX
+	MOVWQZX AX, AX
+	MOVL    CX, AX
+	ANDQ    CX, AX
+	SUBL    CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	NOTQ    AX
+	SUBQ    CX, AX
+	ROLL    $0x05, AX
+	ADDQ    CX, AX
+	IMULQ   CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop51(x uint64, y uint64) uint64
+TEXT ·Prop51(SB), NOSPLIT, $0-24
+	MOVQ  x+0(FP), AX
+	MOVQ  y+8(FP), CX
+	IMULL CX, AX
+	NEGQ  AX
+	SUBQ  CX, AX
+	SARQ  $0x05, AX
+	SHRQ  $0x07, AX
+	ORQ   CX, AX
+	SARQ  $0x05, AX
+	ROLL  $0x05, AX
+	IMULL CX, AX
+	ROLL  $0x05, AX
+	ADDQ  CX, AX
+	SUBQ  CX, AX
+	MOVQ  AX, ret+16(FP)
+	RET
+
+// func Prop52(x uint64, y uint64) uint64
+// Requires: BMI, CMOV, POPCNT
+TEXT ·Prop52(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SHLB    $0x02, AL
+	CMPQ    AX, CX
+	SETLT   AL
+	BSWAPL  AX
+	POPCNTQ AX, AX
+	NOTQ    AX
+	TZCNTQ  AX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	IMULQ   CX, AX
+	ROLL    $0x05, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SARQ    $0x05, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop53(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop53(SB), NOSPLIT, $0-24
+	MOVQ   x+0(FP), AX
+	MOVQ   y+8(FP), CX
+	SARQ   $0x05, AX
+	XORQ   AX, AX
+	IMULL  CX, AX
+	SHRQ   $0x07, AX
+	SUBL   CX, AX
+	ROLL   $0x05, AX
+	TZCNTQ AX, AX
+	ROLQ   $0x0d, AX
+	MOVB   CL, AL
+	SHLQ   $0x03, AX
+	SARQ   $0x05, AX
+	IMULQ  CX, AX
+	MOVQ   AX, ret+16(FP)
+	RET
+
+// func Prop54(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop54(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBQ    CX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	XORQ    CX, AX
+	XORQ    AX, AX
+	MOVB    CL, AL
+	SHLL    $0x09, AX
+	TZCNTQ  AX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	XORQ    CX, AX
+	ROLQ    $0x0d, AX
+	IMULL   CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop55(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop55(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	ADDQ    CX, AX
+	MOVWQZX AX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SHRQ    $0x07, AX
+	ROLQ    $0x0d, AX
+	XORQ    CX, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	SHLB    $0x02, AL
+	SHLQ    $0x03, AX
+	NEGQ    AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop56(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop56(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	TZCNTQ  AX, AX
+	SARQ    $0x05, AX
+	NOTQ    AX
+	SHLQ    $0x03, AX
+	ADDQ    CX, AX
+	ORQ     CX, AX
+	IMULQ   CX, AX
+	MOVWQZX AX, AX
+	BSWAPL  AX
+	ADDB    CL, AL
+	ANDL    CX, AX
+	ROLL    $0x05, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop57(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop57(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBQ    CX, AX
+	ORQ     CX, AX
+	MOVB    CL, AL
+	SHLB    $0x02, AL
+	XORQ    AX, AX
+	SHLQ    $0x03, AX
+	ANDL    CX, AX
+	TZCNTQ  AX, AX
+	MOVWQZX AX, AX
+	TZCNTQ  AX, AX
+	ADDQ    CX, AX
+	SHLQ    $0x03, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop58(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop58(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	MOVL    CX, AX
+	NEGQ    AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	IMULL   CX, AX
+	IMULL   CX, AX
+	NOTQ    AX
+	POPCNTQ AX, AX
+	MOVB    CL, AL
+	NEGQ    AX
+	SHLL    $0x09, AX
+	NEGQ    AX
+	SHLQ    $0x03, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop59(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop59(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	ADDB    CL, AL
+	SARQ    $0x05, AX
+	ORQ     CX, AX
+	ANDL    CX, AX
+	ANDL    CX, AX
+	MOVLQSX AX, AX
+	SHLQ    $0x03, AX
+	ANDQ    CX, AX
+	SUBL    CX, AX
+	POPCNTQ AX, AX
+	IMULL   CX, AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop60(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop60(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SHLL    $0x09, AX
+	ADDL    CX, AX
+	SHLB    $0x02, AL
+	MOVLQSX AX, AX
+	SHLQ    $0x03, AX
+	SARQ    $0x05, AX
+	SHLL    $0x09, AX
+	POPCNTQ AX, AX
+	MOVB    CL, AL
+	ANDQ    CX, AX
+	SHLQ    $0x03, AX
+	ANDL    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop61(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop61(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	POPCNTQ AX, AX
+	MOVWQZX AX, AX
+	CMPQ    AX, CX
+	SETLT   AL
+	SHLL    $0x09, AX
+	CMPQ    AX, CX
+	CMOVQEQ CX, AX
+	IMULQ   CX, AX
+	ADDB    CL, AL
+	MOVB    CL, AL
+	ROLL    $0x05, AX
+	ADDQ    CX, AX
+	ROLL    $0x05, AX
+	MOVLQSX AX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop62(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop62(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	SUBL    CX, AX
+	XORQ    CX, AX
+	SARQ    $0x05, AX
+	ADDB    CL, AL
+	ADDQ    CX, AX
+	POPCNTQ AX, AX
+	XORQ    CX, AX
+	ADDL    CX, AX
+	MOVB    CL, AL
+	MOVLQSX AX, AX
+	SHRQ    $0x07, AX
+	ANDQ    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET
+
+// func Prop63(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop63(SB), NOSPLIT, $0-24
+	MOVQ    x+0(FP), AX
+	MOVQ    y+8(FP), CX
+	TZCNTQ  AX, AX
+	MOVL    CX, AX
+	ANDQ    CX, AX
+	TZCNTQ  AX, AX
+	ANDL    CX, AX
+	TZCNTQ  AX, AX
+	BSWAPL  AX
+	CMPQ    AX, CX
+	CMOVQCS CX, AX
+	IMULL   CX, AX
+	SUBL    CX, AX
+	NOTQ    AX
+	XORQ    CX, AX
+	MOVQ    AX, ret+16(FP)
+	RET

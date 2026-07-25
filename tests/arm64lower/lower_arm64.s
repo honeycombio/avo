@@ -678,3 +678,1744 @@ TEXT ·SelPl(SB), NOSPLIT, $0-40
 	CSEL PL, R2, R3, R3
 	MOVD R3, ret+32(FP)
 	RET
+
+// func SxL(x uint64) uint64
+TEXT ·SxL(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVW R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func SxB(x uint64) uint64
+TEXT ·SxB(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVB R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func SxBL(x uint64) uint64
+TEXT ·SxBL(SB), NOSPLIT, $0-16
+	MOVD  x+0(FP), R0
+	MOVB  R0, R0
+	MOVWU R0, R0
+	MOVD  R0, ret+8(FP)
+	RET
+
+// func SxWL(x uint64) uint64
+TEXT ·SxWL(SB), NOSPLIT, $0-16
+	MOVD  x+0(FP), R0
+	MOVH  R0, R0
+	MOVWU R0, R0
+	MOVD  R0, ret+8(FP)
+	RET
+
+// func NegL(x uint64) uint64
+TEXT ·NegL(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	NEGW R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func NotL(x uint64) uint64
+TEXT ·NotL(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MVNW R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func NotQ(x uint64) uint64
+TEXT ·NotQ(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MVN  R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func RolL7(x uint64) uint64
+TEXT ·RolL7(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	RORW $25, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func RorQ9(x uint64) uint64
+TEXT ·RorQ9(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	ROR  $0x09, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func RorL9(x uint64) uint64
+TEXT ·RorL9(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	RORW $0x09, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BtrQ5(x uint64) uint64
+TEXT ·BtrQ5(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x0000000000000005, R1
+	MOVD $1, R16
+	LSL  R1, R16, R16
+	BIC  R16, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BtcQ5(x uint64) uint64
+TEXT ·BtcQ5(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	MOVD $0x0000000000000005, R1
+	MOVD $1, R16
+	LSL  R1, R16, R16
+	EOR  R16, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func PopcntQ(x uint64) uint64
+// Requires: POPCNT
+TEXT ·PopcntQ(SB), NOSPLIT, $0-16
+	MOVD    x+0(FP), R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MOVD    R0, ret+8(FP)
+	RET
+
+// func SarQ3(x uint64) uint64
+TEXT ·SarQ3(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	ASR  $0x03, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func SarL3(x uint64) uint64
+TEXT ·SarL3(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	ASRW $0x03, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func IncL(x uint64) uint64
+TEXT ·IncL(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	ADDW $1, R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func ShlB2(x uint64) uint64
+TEXT ·ShlB2(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	LSLW $0x02, R0, R16
+	BFI  $0, R16, $8, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func BsfQ(x uint64) uint64
+TEXT ·BsfQ(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	RBIT R0, R1
+	CLZ  R1, R1
+	MOVD R1, ret+8(FP)
+	RET
+
+// func TzcntQ(x uint64) uint64
+// Requires: BMI
+TEXT ·TzcntQ(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	RBIT R0, R0
+	CLZ  R0, R0
+	MOVD R0, ret+8(FP)
+	RET
+
+// func AddL(x uint64, y uint64) uint64
+TEXT ·AddL(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ADDW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func SubL(x uint64, y uint64) uint64
+TEXT ·SubL(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	SUBW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func AndL(x uint64, y uint64) uint64
+TEXT ·AndL(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ANDW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func OrL(x uint64, y uint64) uint64
+TEXT ·OrL(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ORRW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func ImulL(x uint64, y uint64) uint64
+TEXT ·ImulL(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MULW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func XchgQ(x uint64, y uint64) uint64
+TEXT ·XchgQ(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVD R1, R1
+	MOVD R0, R16
+	MOVD R1, R0
+	MOVD R16, R1
+	MOVD R0, ret+16(FP)
+	RET
+
+// func LeaL(x uint64, y uint64) uint64
+TEXT ·LeaL(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ADD   R1<<2, R0, R0
+	ADD   $7, R0, R0
+	MOVWU R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func VecZero(dst *[16]byte)
+// Requires: SSE2
+TEXT ·VecZero(SB), NOSPLIT, $0-8
+	MOVD  dst+0(FP), R0
+	VEOR  V0.B16, V0.B16, V0.B16
+	FMOVQ F0, (R0)
+	RET
+
+// func VecCopy(dst *[32]byte, src *[32]byte)
+// Requires: SSE2
+TEXT ·VecCopy(SB), NOSPLIT, $0-16
+	MOVD  dst+0(FP), R0
+	MOVD  src+8(FP), R1
+	FMOVQ 16(R1), F0
+	FMOVQ F0, 16(R0)
+	RET
+
+// func Prop0(x uint64, y uint64) uint64
+TEXT ·Prop0(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ASR   $0x05, R0, R0
+	RORW  $27, R0, R0
+	ANDW  R1, R0, R0
+	MOVD  $0, R0
+	ASR   $0x05, R0, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	MOVD  $0, R0
+	NEG   R0, R0
+	ORR   R1, R0, R0
+	MOVHU R0, R0
+	AND   R1, R0, R0
+	MOVWU R1, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop1(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop1(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	MOVD    $0, R0
+	ROR     $51, R0, R0
+	CMP     R1, R0
+	CSEL    EQ, R1, R0, R0
+	EOR     R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	MVN     R0, R0
+	ROR     $51, R0, R0
+	MOVW    R0, R0
+	AND     R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop2(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop2(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	NEG   R0, R0
+	ADDW  R1, R0, R0
+	MOVWU R1, R0
+	MOVHU R0, R0
+	ROR   $51, R0, R0
+	SUBW  R1, R0, R0
+	MUL   R1, R0, R0
+	BFI   $0, R1, $8, R0
+	REVW  R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop3(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop3(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVW  R0, R0
+	SUB   R1, R0, R0
+	CMP   R1, R0
+	CSET  LT, R16
+	BFI   $0, R16, $8, R0
+	BFI   $0, R1, $8, R0
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	LSL   $0x03, R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	MOVHU R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	MULW  R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop4(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop4(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	RORW  $27, R0, R0
+	RORW  $27, R0, R0
+	MUL   R1, R0, R0
+	ADD   R1, R0, R0
+	MOVHU R0, R0
+	MOVD  $0, R0
+	MVN   R0, R0
+	LSL   $0x03, R0, R0
+	ADD   R1, R0, R0
+	LSR   $0x07, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ADD   R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop5(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop5(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ANDW R1, R0, R0
+	LSR  $0x07, R0, R0
+	LSLW $0x09, R0, R0
+	LSLW $0x09, R0, R0
+	MOVD $0, R0
+	MULW R1, R0, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	SUBW R1, R0, R0
+	RBIT R0, R0
+	CLZ  R0, R0
+	LSLW $0x09, R0, R0
+	ROR  $51, R0, R0
+	BFI  $0, R1, $8, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop6(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop6(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVWU R1, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ORR   R1, R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	MULW  R1, R0, R0
+	MOVW  R0, R0
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	ASR   $0x05, R0, R0
+	LSR   $0x07, R0, R0
+	MOVW  R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop7(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop7(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	LSLW $0x09, R0, R0
+	AND  R1, R0, R0
+	MULW R1, R0, R0
+	ADDW R1, R0, R0
+	ADD  R1, R0, R0
+	SUBW R1, R0, R0
+	CMP  R1, R0
+	CSEL EQ, R1, R0, R0
+	NEG  R0, R0
+	ROR  $51, R0, R0
+	ADD  R1, R0, R0
+	RORW $27, R0, R0
+	MOVW R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop8(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop8(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	ADDW    R1, R0, R0
+	RORW    $27, R0, R0
+	ADDW    R1, R0, R0
+	NEG     R0, R0
+	BFI     $0, R1, $8, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	LSLW    $0x09, R0, R0
+	MUL     R1, R0, R0
+	AND     R1, R0, R0
+	MOVD    $0, R0
+	CMP     R1, R0
+	CSET    LT, R16
+	BFI     $0, R16, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop9(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop9(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	ADDW    R1, R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	MULW    R1, R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	RORW    $27, R0, R0
+	SUB     R1, R0, R0
+	NEG     R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	ADDW    R1, R0, R0
+	MULW    R1, R0, R0
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	MVN     R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop10(x uint64, y uint64) uint64
+// Requires: BMI, POPCNT
+TEXT ·Prop10(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	MUL     R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	ADDW    R1, R0, R0
+	RBIT    R0, R0
+	CLZ     R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	ROR     $51, R0, R0
+	SUBW    R1, R0, R0
+	MUL     R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MUL     R1, R0, R0
+	MVN     R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop11(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop11(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	ANDW    R1, R0, R0
+	MVN     R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	RORW    $27, R0, R0
+	ADDW    R1, R0, R0
+	RORW    $27, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	CMP     R1, R0
+	CSET    LT, R16
+	BFI     $0, R16, $8, R0
+	ASR     $0x05, R0, R0
+	BFI     $0, R1, $8, R0
+	MULW    R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop12(x uint64, y uint64) uint64
+// Requires: BMI, CMOV, POPCNT
+TEXT ·Prop12(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	SUB     R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	RBIT    R0, R0
+	CLZ     R0, R0
+	MVN     R0, R0
+	SUB     R1, R0, R0
+	EOR     R1, R0, R0
+	ADD     R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MOVW    R0, R0
+	MUL     R1, R0, R0
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop13(x uint64, y uint64) uint64
+TEXT ·Prop13(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	AND   R1, R0, R0
+	CMP   R1, R0
+	CSET  LT, R16
+	BFI   $0, R16, $8, R0
+	MUL   R1, R0, R0
+	ADD   R1, R0, R0
+	MOVD  $0, R0
+	AND   R1, R0, R0
+	MOVHU R0, R0
+	SUBW  R1, R0, R0
+	ORR   R1, R0, R0
+	LSL   $0x03, R0, R0
+	AND   R1, R0, R0
+	MOVWU R1, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop14(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop14(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	SUBW    R1, R0, R0
+	LSR     $0x07, R0, R0
+	ADDW    R1, R0, R0
+	MOVHU   R0, R0
+	ROR     $51, R0, R0
+	LSL     $0x03, R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	NEG     R0, R0
+	EOR     R1, R0, R0
+	SUB     R1, R0, R0
+	CMP     R1, R0
+	CSET    LT, R16
+	BFI     $0, R16, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop15(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop15(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	ROR     $51, R0, R0
+	LSL     $0x03, R0, R0
+	MVN     R0, R0
+	AND     R1, R0, R0
+	MOVHU   R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	RORW    $27, R0, R0
+	LSL     $0x03, R0, R0
+	SUBW    R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	MUL     R1, R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop16(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop16(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	SUB   R1, R0, R0
+	ANDW  R1, R0, R0
+	REVW  R0, R0
+	RORW  $27, R0, R0
+	MOVHU R0, R0
+	AND   R1, R0, R0
+	RORW  $27, R0, R0
+	LSLW  $0x09, R0, R0
+	LSLW  $0x09, R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	ADD   R1, R0, R0
+	ANDW  R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop17(x uint64, y uint64) uint64
+TEXT ·Prop17(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ORR   R1, R0, R0
+	MOVHU R0, R0
+	ANDW  R1, R0, R0
+	SUBW  R1, R0, R0
+	ROR   $51, R0, R0
+	ORR   R1, R0, R0
+	REVW  R0, R0
+	LSR   $0x07, R0, R0
+	LSR   $0x07, R0, R0
+	MOVD  $0, R0
+	LSR   $0x07, R0, R0
+	MVN   R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop18(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop18(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ORR   R1, R0, R0
+	MULW  R1, R0, R0
+	LSR   $0x07, R0, R0
+	MVN   R0, R0
+	ROR   $51, R0, R0
+	SUBW  R1, R0, R0
+	MOVWU R1, R0
+	EOR   R1, R0, R0
+	MUL   R1, R0, R0
+	SUBW  R1, R0, R0
+	MOVWU R1, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop19(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop19(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ADD  R1, R0, R0
+	LSL  $0x03, R0, R0
+	LSLW $0x09, R0, R0
+	RORW $27, R0, R0
+	AND  R1, R0, R0
+	ADDW R1, R0, R0
+	RORW $27, R0, R0
+	ROR  $51, R0, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	ADDW R1, R0, R0
+	LSLW $0x09, R0, R0
+	MOVD $0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop20(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop20(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	RORW  $27, R0, R0
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	ADD   R1, R0, R0
+	MOVHU R0, R0
+	SUB   R1, R0, R0
+	NEG   R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	ASR   $0x05, R0, R0
+	ADDW  R1, R0, R0
+	MUL   R1, R0, R0
+	LSR   $0x07, R0, R0
+	SUBW  R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop21(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop21(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ASR  $0x05, R0, R0
+	LSLW $0x09, R0, R0
+	REVW R0, R0
+	MOVW R0, R0
+	SUBW R1, R0, R0
+	ASR  $0x05, R0, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	ASR  $0x05, R0, R0
+	SUB  R1, R0, R0
+	LSLW $0x09, R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	MUL  R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop22(x uint64, y uint64) uint64
+TEXT ·Prop22(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	AND  R1, R0, R0
+	LSLW $0x02, R0, R16
+	BFI  $0, R16, $8, R0
+	AND  R1, R0, R0
+	ASR  $0x05, R0, R0
+	MUL  R1, R0, R0
+	BFI  $0, R1, $8, R0
+	LSLW $0x09, R0, R0
+	AND  R1, R0, R0
+	ASR  $0x05, R0, R0
+	ANDW R1, R0, R0
+	ORR  R1, R0, R0
+	ADDW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop23(x uint64, y uint64) uint64
+TEXT ·Prop23(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ANDW  R1, R0, R0
+	MOVWU R1, R0
+	ROR   $51, R0, R0
+	ORR   R1, R0, R0
+	MUL   R1, R0, R0
+	MVN   R0, R0
+	MOVW  R0, R0
+	LSR   $0x07, R0, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	AND   R1, R0, R0
+	LSL   $0x03, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop24(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop24(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	MULW    R1, R0, R0
+	ROR     $51, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	REVW    R0, R0
+	SUBW    R1, R0, R0
+	MOVHU   R0, R0
+	ADD     R1, R0, R0
+	MOVWU   R1, R0
+	ASR     $0x05, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	NEG     R0, R0
+	MOVWU   R1, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop25(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop25(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	ADD  R1, R0, R15
+	BFI  $0, R15, $8, R0
+	LSLW $0x09, R0, R0
+	BFI  $0, R1, $8, R0
+	ROR  $51, R0, R0
+	AND  R1, R0, R0
+	REVW R0, R0
+	MVN  R0, R0
+	MOVD $0, R0
+	LSLW $0x02, R0, R16
+	BFI  $0, R16, $8, R0
+	REVW R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop26(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop26(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	MVN  R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	BFI  $0, R1, $8, R0
+	MOVW R0, R0
+	REVW R0, R0
+	CMP  R1, R0
+	CSEL EQ, R1, R0, R0
+	MOVW R0, R0
+	BFI  $0, R1, $8, R0
+	LSL  $0x03, R0, R0
+	LSL  $0x03, R0, R0
+	ANDW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop27(x uint64, y uint64) uint64
+// Requires: BMI, POPCNT
+TEXT ·Prop27(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	RBIT    R0, R0
+	CLZ     R0, R0
+	ADD     R1, R0, R0
+	RBIT    R0, R0
+	CLZ     R0, R0
+	MOVD    $0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	SUB     R1, R0, R0
+	ROR     $51, R0, R0
+	MULW    R1, R0, R0
+	MUL     R1, R0, R0
+	ROR     $51, R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop28(x uint64, y uint64) uint64
+TEXT ·Prop28(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MOVHU R0, R0
+	ROR   $51, R0, R0
+	ORR   R1, R0, R0
+	ASR   $0x05, R0, R0
+	EOR   R1, R0, R0
+	AND   R1, R0, R0
+	MUL   R1, R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	MOVD  $0, R0
+	NEG   R0, R0
+	MVN   R0, R0
+	SUB   R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop29(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop29(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	RORW    $27, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	ANDW    R1, R0, R0
+	LSLW    $0x09, R0, R0
+	MOVD    $0, R0
+	ASR     $0x05, R0, R0
+	EOR     R1, R0, R0
+	NEG     R0, R0
+	LSLW    $0x09, R0, R0
+	LSR     $0x07, R0, R0
+	BFI     $0, R1, $8, R0
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop30(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop30(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	LSLW $0x09, R0, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	RORW $27, R0, R0
+	ROR  $51, R0, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	ANDW R1, R0, R0
+	MUL  R1, R0, R0
+	LSLW $0x02, R0, R16
+	BFI  $0, R16, $8, R0
+	ORR  R1, R0, R0
+	RORW $27, R0, R0
+	LSL  $0x03, R0, R0
+	ANDW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop31(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop31(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ORR   R1, R0, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	EOR   R1, R0, R0
+	LSR   $0x07, R0, R0
+	ROR   $51, R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	ORR   R1, R0, R0
+	RORW  $27, R0, R0
+	ASR   $0x05, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ORR   R1, R0, R0
+	MOVHU R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop32(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop32(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MULW  R1, R0, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	MVN   R0, R0
+	ANDW  R1, R0, R0
+	NEG   R0, R0
+	MOVHU R0, R0
+	BFI   $0, R1, $8, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	ADDW  R1, R0, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	ROR   $51, R0, R0
+	MOVHU R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop33(x uint64, y uint64) uint64
+TEXT ·Prop33(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	MUL   R1, R0, R0
+	LSL   $0x03, R0, R0
+	BFI   $0, R1, $8, R0
+	MOVW  R0, R0
+	LSR   $0x07, R0, R0
+	LSR   $0x07, R0, R0
+	ROR   $51, R0, R0
+	LSR   $0x07, R0, R0
+	ADDW  R1, R0, R0
+	MOVWU R1, R0
+	RORW  $27, R0, R0
+	LSLW  $0x09, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop34(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop34(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ORR   R1, R0, R0
+	ASR   $0x05, R0, R0
+	MOVWU R1, R0
+	ADD   R1, R0, R0
+	REVW  R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	REVW  R0, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	MOVWU R1, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ANDW  R1, R0, R0
+	SUBW  R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop35(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop35(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	ORR     R1, R0, R0
+	ADD     R1, R0, R0
+	MOVWU   R1, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MOVHU   R0, R0
+	ROR     $51, R0, R0
+	LSL     $0x03, R0, R0
+	EOR     R1, R0, R0
+	LSR     $0x07, R0, R0
+	SUB     R1, R0, R0
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop36(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop36(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	SUBW  R1, R0, R0
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	RORW  $27, R0, R0
+	MOVHU R0, R0
+	MVN   R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ASR   $0x05, R0, R0
+	ROR   $51, R0, R0
+	MVN   R0, R0
+	LSLW  $0x09, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	MOVWU R1, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop37(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop37(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	LSR   $0x07, R0, R0
+	MULW  R1, R0, R0
+	ADD   R1, R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	SUBW  R1, R0, R0
+	ADDW  R1, R0, R0
+	MOVWU R1, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	AND   R1, R0, R0
+	LSL   $0x03, R0, R0
+	ASR   $0x05, R0, R0
+	LSLW  $0x09, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop38(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop38(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	MULW    R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	BFI     $0, R1, $8, R0
+	SUBW    R1, R0, R0
+	BFI     $0, R1, $8, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	LSR     $0x07, R0, R0
+	BFI     $0, R1, $8, R0
+	ORR     R1, R0, R0
+	ANDW    R1, R0, R0
+	LSLW    $0x09, R0, R0
+	REVW    R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop39(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop39(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ADDW  R1, R0, R0
+	MOVHU R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	NEG   R0, R0
+	REVW  R0, R0
+	ASR   $0x05, R0, R0
+	MUL   R1, R0, R0
+	AND   R1, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ANDW  R1, R0, R0
+	MOVHU R0, R0
+	ASR   $0x05, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop40(x uint64, y uint64) uint64
+TEXT ·Prop40(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ADD   R1, R0, R0
+	MOVHU R0, R0
+	BFI   $0, R1, $8, R0
+	MUL   R1, R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	MUL   R1, R0, R0
+	CMP   R1, R0
+	CSET  LT, R16
+	BFI   $0, R16, $8, R0
+	EOR   R1, R0, R0
+	NEG   R0, R0
+	MVN   R0, R0
+	SUB   R1, R0, R0
+	AND   R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop41(x uint64, y uint64) uint64
+// Requires: BMI, POPCNT
+TEXT ·Prop41(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	ASR     $0x05, R0, R0
+	LSL     $0x03, R0, R0
+	MOVD    $0, R0
+	REVW    R0, R0
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	MOVHU   R0, R0
+	MOVHU   R0, R0
+	RBIT    R0, R0
+	CLZ     R0, R0
+	NEG     R0, R0
+	MVN     R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop42(x uint64, y uint64) uint64
+TEXT ·Prop42(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	LSLW  $0x09, R0, R0
+	MOVWU R1, R0
+	MOVW  R0, R0
+	RORW  $27, R0, R0
+	ORR   R1, R0, R0
+	EOR   R1, R0, R0
+	ASR   $0x05, R0, R0
+	ASR   $0x05, R0, R0
+	RORW  $27, R0, R0
+	EOR   R1, R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop43(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop43(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVW R0, R0
+	ANDW R1, R0, R0
+	CMP  R1, R0
+	CSEL EQ, R1, R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	ADD  R1, R0, R15
+	BFI  $0, R15, $8, R0
+	LSLW $0x09, R0, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	ADDW R1, R0, R0
+	MOVD $0, R0
+	LSL  $0x03, R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	MOVD $0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop44(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop44(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	AND  R1, R0, R0
+	ADDW R1, R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	ADD  R1, R0, R15
+	BFI  $0, R15, $8, R0
+	BFI  $0, R1, $8, R0
+	AND  R1, R0, R0
+	MUL  R1, R0, R0
+	LSLW $0x09, R0, R0
+	ADD  R1, R0, R0
+	EOR  R1, R0, R0
+	SUB  R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop45(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop45(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	SUBW R1, R0, R0
+	NEG  R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	ADD  R1, R0, R0
+	ADD  R1, R0, R15
+	BFI  $0, R15, $8, R0
+	ROR  $51, R0, R0
+	ADDW R1, R0, R0
+	CMP  R1, R0
+	CSEL EQ, R1, R0, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	ASR  $0x05, R0, R0
+	MOVD $0, R0
+	ASR  $0x05, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop46(x uint64, y uint64) uint64
+TEXT ·Prop46(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	NEG  R0, R0
+	ANDW R1, R0, R0
+	MOVD $0, R0
+	MOVW R0, R0
+	MULW R1, R0, R0
+	NEG  R0, R0
+	MULW R1, R0, R0
+	ADDW R1, R0, R0
+	NEG  R0, R0
+	REVW R0, R0
+	LSLW $0x02, R0, R16
+	BFI  $0, R16, $8, R0
+	BFI  $0, R1, $8, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop47(x uint64, y uint64) uint64
+TEXT ·Prop47(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MVN  R0, R0
+	ADD  R1, R0, R15
+	BFI  $0, R15, $8, R0
+	ASR  $0x05, R0, R0
+	AND  R1, R0, R0
+	MUL  R1, R0, R0
+	NEG  R0, R0
+	RORW $27, R0, R0
+	LSR  $0x07, R0, R0
+	MUL  R1, R0, R0
+	EOR  R1, R0, R0
+	ADDW R1, R0, R0
+	ASR  $0x05, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop48(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop48(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	MUL     R1, R0, R0
+	LSL     $0x03, R0, R0
+	ADDW    R1, R0, R0
+	EOR     R1, R0, R0
+	NEG     R0, R0
+	CMP     R1, R0
+	CSEL    EQ, R1, R0, R0
+	MUL     R1, R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	ADDW    R1, R0, R0
+	MOVW    R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop49(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop49(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MOVW R0, R0
+	LSLW $0x09, R0, R0
+	MVN  R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	LSLW $0x02, R0, R16
+	BFI  $0, R16, $8, R0
+	ROR  $51, R0, R0
+	ADD  R1, R0, R0
+	CMP  R1, R0
+	CSEL EQ, R1, R0, R0
+	NEG  R0, R0
+	LSR  $0x07, R0, R0
+	CMP  R1, R0
+	CSEL EQ, R1, R0, R0
+	ANDW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop50(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop50(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	ADDW  R1, R0, R0
+	MOVHU R0, R0
+	MOVWU R1, R0
+	AND   R1, R0, R0
+	SUBW  R1, R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	MVN   R0, R0
+	SUB   R1, R0, R0
+	RORW  $27, R0, R0
+	ADD   R1, R0, R0
+	MUL   R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop51(x uint64, y uint64) uint64
+TEXT ·Prop51(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	MULW R1, R0, R0
+	NEG  R0, R0
+	SUB  R1, R0, R0
+	ASR  $0x05, R0, R0
+	LSR  $0x07, R0, R0
+	ORR  R1, R0, R0
+	ASR  $0x05, R0, R0
+	RORW $27, R0, R0
+	MULW R1, R0, R0
+	RORW $27, R0, R0
+	ADD  R1, R0, R0
+	SUB  R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop52(x uint64, y uint64) uint64
+// Requires: BMI, CMOV, POPCNT
+TEXT ·Prop52(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	CMP     R1, R0
+	CSET    LT, R16
+	BFI     $0, R16, $8, R0
+	REVW    R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MVN     R0, R0
+	RBIT    R0, R0
+	CLZ     R0, R0
+	CMP     R1, R0
+	CSET    LT, R16
+	BFI     $0, R16, $8, R0
+	MUL     R1, R0, R0
+	RORW    $27, R0, R0
+	CMP     R1, R0
+	CSEL    EQ, R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	ASR     $0x05, R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop53(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop53(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	ASR  $0x05, R0, R0
+	MOVD $0, R0
+	MULW R1, R0, R0
+	LSR  $0x07, R0, R0
+	SUBW R1, R0, R0
+	RORW $27, R0, R0
+	RBIT R0, R0
+	CLZ  R0, R0
+	ROR  $51, R0, R0
+	BFI  $0, R1, $8, R0
+	LSL  $0x03, R0, R0
+	ASR  $0x05, R0, R0
+	MUL  R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop54(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop54(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD y+8(FP), R1
+	SUB  R1, R0, R0
+	CMP  R1, R0
+	CSET LT, R16
+	BFI  $0, R16, $8, R0
+	CMP  R1, R0
+	CSEL LO, R1, R0, R0
+	EOR  R1, R0, R0
+	MOVD $0, R0
+	BFI  $0, R1, $8, R0
+	LSLW $0x09, R0, R0
+	RBIT R0, R0
+	CLZ  R0, R0
+	CMP  R1, R0
+	CSEL EQ, R1, R0, R0
+	EOR  R1, R0, R0
+	ROR  $51, R0, R0
+	MULW R1, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func Prop55(x uint64, y uint64) uint64
+// Requires: CMOV
+TEXT ·Prop55(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	ADD   R1, R0, R0
+	MOVHU R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	LSR   $0x07, R0, R0
+	ROR   $51, R0, R0
+	EOR   R1, R0, R0
+	CMP   R1, R0
+	CSEL  EQ, R1, R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	LSL   $0x03, R0, R0
+	NEG   R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop56(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop56(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ASR   $0x05, R0, R0
+	MVN   R0, R0
+	LSL   $0x03, R0, R0
+	ADD   R1, R0, R0
+	ORR   R1, R0, R0
+	MUL   R1, R0, R0
+	MOVHU R0, R0
+	REVW  R0, R0
+	ADD   R1, R0, R15
+	BFI   $0, R15, $8, R0
+	ANDW  R1, R0, R0
+	RORW  $27, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop57(x uint64, y uint64) uint64
+// Requires: BMI
+TEXT ·Prop57(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	SUB   R1, R0, R0
+	ORR   R1, R0, R0
+	BFI   $0, R1, $8, R0
+	LSLW  $0x02, R0, R16
+	BFI   $0, R16, $8, R0
+	MOVD  $0, R0
+	LSL   $0x03, R0, R0
+	ANDW  R1, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	MOVHU R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ADD   R1, R0, R0
+	LSL   $0x03, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
+
+// func Prop58(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop58(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	MOVWU   R1, R0
+	NEG     R0, R0
+	CMP     R1, R0
+	CSEL    EQ, R1, R0, R0
+	MULW    R1, R0, R0
+	MULW    R1, R0, R0
+	MVN     R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	BFI     $0, R1, $8, R0
+	NEG     R0, R0
+	LSLW    $0x09, R0, R0
+	NEG     R0, R0
+	LSL     $0x03, R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop59(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop59(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	ASR     $0x05, R0, R0
+	ORR     R1, R0, R0
+	ANDW    R1, R0, R0
+	ANDW    R1, R0, R0
+	MOVW    R0, R0
+	LSL     $0x03, R0, R0
+	AND     R1, R0, R0
+	SUBW    R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MULW    R1, R0, R0
+	CMP     R1, R0
+	CSEL    LO, R1, R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop60(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop60(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	LSLW    $0x09, R0, R0
+	ADDW    R1, R0, R0
+	LSLW    $0x02, R0, R16
+	BFI     $0, R16, $8, R0
+	MOVW    R0, R0
+	LSL     $0x03, R0, R0
+	ASR     $0x05, R0, R0
+	LSLW    $0x09, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	BFI     $0, R1, $8, R0
+	AND     R1, R0, R0
+	LSL     $0x03, R0, R0
+	ANDW    R1, R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop61(x uint64, y uint64) uint64
+// Requires: CMOV, POPCNT
+TEXT ·Prop61(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	MOVHU   R0, R0
+	CMP     R1, R0
+	CSET    LT, R16
+	BFI     $0, R16, $8, R0
+	LSLW    $0x09, R0, R0
+	CMP     R1, R0
+	CSEL    EQ, R1, R0, R0
+	MUL     R1, R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	BFI     $0, R1, $8, R0
+	RORW    $27, R0, R0
+	ADD     R1, R0, R0
+	RORW    $27, R0, R0
+	MOVW    R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop62(x uint64, y uint64) uint64
+// Requires: POPCNT
+TEXT ·Prop62(SB), NOSPLIT, $0-24
+	MOVD    x+0(FP), R0
+	MOVD    y+8(FP), R1
+	SUBW    R1, R0, R0
+	EOR     R1, R0, R0
+	ASR     $0x05, R0, R0
+	ADD     R1, R0, R15
+	BFI     $0, R15, $8, R0
+	ADD     R1, R0, R0
+	FMOVD   R0, F31
+	VCNT    V31.B8, V31.B8
+	VUADDLV V31.B8, V31
+	FMOVD   F31, R0
+	EOR     R1, R0, R0
+	ADDW    R1, R0, R0
+	BFI     $0, R1, $8, R0
+	MOVW    R0, R0
+	LSR     $0x07, R0, R0
+	AND     R1, R0, R0
+	MOVD    R0, ret+16(FP)
+	RET
+
+// func Prop63(x uint64, y uint64) uint64
+// Requires: BMI, CMOV
+TEXT ·Prop63(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  y+8(FP), R1
+	RBIT  R0, R0
+	CLZ   R0, R0
+	MOVWU R1, R0
+	AND   R1, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	ANDW  R1, R0, R0
+	RBIT  R0, R0
+	CLZ   R0, R0
+	REVW  R0, R0
+	CMP   R1, R0
+	CSEL  LO, R1, R0, R0
+	MULW  R1, R0, R0
+	SUBW  R1, R0, R0
+	MVN   R0, R0
+	EOR   R1, R0, R0
+	MOVD  R0, ret+16(FP)
+	RET
