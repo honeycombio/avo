@@ -485,11 +485,6 @@ func TestARM64DirectivesRejected(t *testing.T) {
 		{"#include \"defs.h\""}, // could define or open anything
 		{"#endif"},
 		{"#if 1"}, // not a directive Go's assembler has at all
-		// An embedded newline splits into two physical output lines and only
-		// the first gets the "// " prefix, so this '#' lands at column 0 as a
-		// live directive -- and GOAMD64_v1 is defined only for GOARCH=amd64,
-		// making it a per-architecture boundary with no rewrite step needed.
-		{"benign text\n#ifdef GOAMD64_v1"},
 	} {
 		t.Run(strings.TrimSpace(lines[0]), func(t *testing.T) {
 			ctx := build.NewContext()
@@ -570,5 +565,63 @@ func TestARM64DirectiveInSkippedTwin(t *testing.T) {
 			}()
 			_, _ = printer.NewARM64Asm(cfg).Print(f)
 		})
+	}
+}
+
+// TestARM64CommentNewlineRejected covers comment text containing a newline.
+//
+// The emitter writes "\t// %s\n", so a comment line with an embedded newline
+// produces a SECOND physical line carrying no comment prefix — live text at
+// column 0, in both outputs. It does not have to look like a directive to do
+// harm: an instruction there is assembled by both sides, and because the two
+// architectures rename registers differently, the identical text reads and
+// writes different values on each. It is also invisible to every analysis here,
+// all of which assume a comment carries no code.
+func TestARM64CommentNewlineRejected(t *testing.T) {
+	for _, line := range []string{
+		"benign note\nMOVB R11, (R12)", // injects a live instruction
+		"benign text\n#ifdef GOAMD64_v1",
+		"trailing\r\nMOVD $1, R0",
+	} {
+		t.Run(strings.SplitN(line, "\n", 2)[0], func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("nl")
+			ctx.SignatureExpr("func()")
+			ctx.Comment(line)
+			ctx.RET()
+
+			f, errs := ctx.Result()
+			if errs != nil {
+				t.Fatal(errs)
+			}
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected a panic for %q", line)
+				}
+				if msg, ok := r.(string); !ok || !strings.Contains(msg, "newline") {
+					t.Fatalf("unexpected panic: %v", r)
+				}
+			}()
+			_, _ = printer.NewARM64Asm(printer.NewGoRunConfig()).Print(f)
+		})
+	}
+}
+
+// TestARM64BuildConstraintParenthesized checks the arm64 term is combined with
+// the original constraint by AND over the WHOLE expression. Without brackets,
+// "!noasm || purego" would become "arm64 && !noasm || purego", and since &&
+// binds tighter that parses as "(arm64 && !noasm) || purego" — pulling the
+// arm64 assembly into non-arm64 builds.
+func TestARM64BuildConstraintParenthesized(t *testing.T) {
+	ctx := build.NewContext()
+	ctx.ConstraintExpr("!noasm purego")
+	ctx.Function("c")
+	ctx.SignatureExpr("func()")
+	ctx.RET()
+
+	out := printARM64(t, ctx, printer.NewGoRunConfig())
+	if !strings.Contains(out, "//go:build arm64 && (") {
+		t.Errorf("build constraint is not parenthesized:\n%s", out)
 	}
 }

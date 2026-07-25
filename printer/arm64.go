@@ -207,9 +207,15 @@ func (p *arm64) header(f *ir.File) {
 		if err != nil {
 			p.AddError(err)
 		}
-		constraints = strings.Replace(constraints, "//go:build ", "//go:build arm64 && ", 1)
+		// Parenthesized because && binds tighter than ||: rewriting
+		// "//go:build !noasm || purego" without brackets yields
+		// "arm64 && !noasm || purego", which parses as
+		// "(arm64 && !noasm) || purego" and pulls the arm64 file into non-arm64
+		// builds. The two agree only while the expression is pure AND.
+		constraints = strings.Replace(constraints, "//go:build ", "//go:build arm64 && (", 1)
+		constraints = strings.TrimRight(constraints, "\n") + ")\n"
 		p.NL()
-		p.Printf(constraints)
+		p.Printf("%s", constraints)
 	} else {
 		p.NL()
 		p.Printf("//go:build arm64\n")
@@ -349,17 +355,25 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 // never come from the instruction stream.
 func checkNoDirective(c *ir.Comment) {
 	for _, line := range c.Lines {
-		// Split first. A single Lines entry may contain a newline, and the
-		// emitter writes "\t// %s\n" -- so only the FIRST physical line gets the
-		// comment prefix, and a '#' after an embedded newline lands at column 0
-		// as a live directive. Checking the logical line would miss it, which is
-		// the same mistake in miniature as the subsystem this replaced: model
-		// what the consumer actually reads, not how the producer structured it.
-		for _, phys := range strings.FieldsFunc(line, func(r rune) bool { return r == '\n' || r == '\r' }) {
-			if d := strings.TrimSpace(phys); strings.HasPrefix(d, "#") {
-				panic(fmt.Sprintf("arm64: comment line %q would be a preprocessor directive; "+
-					"use twin functions for GOAMD64 variants, and avoid a leading '#' in prose", d))
-			}
+		// Embedded newlines first, and unconditionally. The emitter writes
+		// "\t// %s\n", so a comment line containing a newline produces a SECOND
+		// physical line with no comment prefix at all -- live text at column 0,
+		// in both outputs. It does not have to look like a directive to do
+		// damage: an instruction there is assembled by both sides, and since the
+		// two architectures rename registers differently, the same text reads
+		// and writes different values on each. It is also invisible to every
+		// analysis here, all of which assume a comment carries no code.
+		//
+		// Checking what follows the newline was the wrong fix, twice over. The
+		// invariant is simply that one comment line becomes one prefixed output
+		// line, so anything that breaks it is refused.
+		if strings.ContainsAny(line, "\n\r") {
+			panic(fmt.Sprintf("arm64: comment line %q contains a newline; "+
+				"only the first physical line would be commented, leaving the rest live", line))
+		}
+		if d := strings.TrimSpace(line); strings.HasPrefix(d, "#") {
+			panic(fmt.Sprintf("arm64: comment line %q would be a preprocessor directive; "+
+				"use twin functions for GOAMD64 variants, and avoid a leading '#' in prose", d))
 		}
 	}
 }
@@ -379,6 +393,14 @@ func (p *arm64) zeroSelf(r, test string, flags bool) {
 // and written by flush(), matching the goasm printer's layout (and asmfmt).
 func (p *arm64) emit(format string, args ...interface{}) {
 	line := fmt.Sprintf(format, args...)
+	// One emit, one output line. Everything downstream -- the alignment pass,
+	// the analyses that reason about instruction positions -- assumes that, and
+	// a newline reaching the file un-prefixed is how text becomes live code.
+	// Asserting it here closes the class rather than each site that could
+	// reintroduce it.
+	if strings.ContainsAny(line, "\n\r") {
+		panic(fmt.Sprintf("arm64: emitted text %q spans more than one line", line))
+	}
 	op, operands := line, ""
 	if i := strings.IndexByte(line, ' '); i >= 0 {
 		op, operands = line[:i], line[i+1:]
