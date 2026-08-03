@@ -2204,9 +2204,20 @@ func btPairs(nodes []ir.Node) map[int]btFusion {
 		if k < len(nodes) {
 			branch, isInstr = nodes[k].(*ir.Instruction)
 		}
+		// Naming what actually follows matters here: a label between the pair
+		// is the interesting rejection (it would let a jump reach the branch
+		// without executing the BTL), and reporting it as "end of function"
+		// sends whoever hits this looking in the wrong place.
 		next := "end of function"
-		if isInstr {
-			next = branch.Opcode
+		if k < len(nodes) {
+			switch n := nodes[k].(type) {
+			case *ir.Instruction:
+				next = n.Opcode
+			case ir.Label:
+				next = fmt.Sprintf("label %q", string(n))
+			default:
+				next = fmt.Sprintf("%T", n)
+			}
 		}
 		// Only a carry branch says anything about the bit BT selected; every
 		// other condition reads a flag x86 leaves undefined afterwards. JC and

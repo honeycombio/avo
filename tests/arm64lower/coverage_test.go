@@ -81,13 +81,50 @@ func caseStrings(sw *ast.SwitchStmt) []string {
 	return out
 }
 
+// namedOpcodes returns every opcode a function names in a comparison against
+// some .Opcode field, in either direction and with == or !=.
+//
+// Not everything the printer translates reaches lower's switch. BTL is
+// recognized by a pre-pass and emitted from function's main loop, so scanning
+// the switch alone reported full coverage for it while nothing executed it.
+// Collecting opcode literals wherever they are compared catches that shape, and
+// the next one, without the gate having to know how each is dispatched.
+func namedOpcodes(t *testing.T, f *ast.File, fnName string) []string {
+	t.Helper()
+	var out []string
+	ast.Inspect(findFunc(t, f, fnName), func(n ast.Node) bool {
+		be, ok := n.(*ast.BinaryExpr)
+		if !ok || (be.Op != token.EQL && be.Op != token.NEQ) {
+			return true
+		}
+		for _, sides := range [][2]ast.Expr{{be.X, be.Y}, {be.Y, be.X}} {
+			sel, ok := sides[0].(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Opcode" {
+				continue
+			}
+			if lit, ok := sides[1].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				if s, err := strconv.Unquote(lit.Value); err == nil {
+					out = append(out, s)
+				}
+			}
+		}
+		return true
+	})
+	return out
+}
+
 // dispatchedOpcodes returns the opcodes the printer's instruction dispatch
-// handles: the cases of the top-level switch on i.Opcode in lower. Nested
-// switches inside a case are ignored -- they refine a lowering rather than add
-// an entry point.
+// handles: the cases of the top-level switch on i.Opcode in lower, plus any
+// named outside it (see namedOpcodes). Nested switches inside a case are
+// ignored -- they refine a lowering rather than add an entry point.
 func dispatchedOpcodes(t *testing.T) []string {
 	t.Helper()
-	fn := findFunc(t, parsePrinter(t), "lower")
+	f := parsePrinter(t)
+	var out []string
+	for _, fnName := range []string{"btPairs", "function"} {
+		out = append(out, namedOpcodes(t, f, fnName)...)
+	}
+	fn := findFunc(t, f, "lower")
 	for _, stmt := range fn.Body.List {
 		sw, ok := stmt.(*ast.SwitchStmt)
 		if !ok {
@@ -97,7 +134,7 @@ func dispatchedOpcodes(t *testing.T) []string {
 		if !ok || sel.Sel.Name != "Opcode" {
 			continue
 		}
-		return caseStrings(sw)
+		return append(out, caseStrings(sw)...)
 	}
 	t.Fatalf("%s: no switch on i.Opcode in lower; the coverage gate needs updating", printerSource)
 	return nil
