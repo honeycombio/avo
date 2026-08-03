@@ -706,6 +706,24 @@ func main() {
 
 	// ---- regression cases for lowering bugs found in review ----
 
+	// MovwzxL: the 32-bit-destination form of a halfword zero-extend, loaded
+	// through a scaled index -- the shape minlz's block encoders use to read
+	// their hash tables. It differs from MOVWQZX only in the named width of the
+	// destination, not in the value produced, since x86 zeroes bits 63:32 on any
+	// 32-bit register write. The destination is pre-filled with ones so that a
+	// lowering which failed to clear the upper half would be caught rather than
+	// masked by an already-zero register.
+	TEXT("MovwzxL", NOSPLIT, "func(p *[4]uint16, i uint64) uint64")
+	{
+		p, i, d := GP64(), GP64(), GP64()
+		Load(Param("p"), p)
+		Load(Param("i"), i)
+		MOVQ(operand.U64(^uint64(0)), d)
+		MOVWLZX(operand.Mem{Base: p, Index: i, Scale: 2}, d.As32())
+		Store(d, ReturnIndex(0))
+		RET()
+	}
+
 	// MovbzxHigh: a byte-extend from a high-byte source must read bits 15:8. AH
 	// renames to the same arm64 register as AL, so a plain byte load silently
 	// reads 7:0 instead. The 32-bit destination form is used deliberately: with a

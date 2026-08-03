@@ -822,7 +822,13 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		p.lowerMOVB(ops[0], ops[1])
 	case "MOVWQSX": // load/extend int16, sign-extend (mem or reg source)
 		p.emit("MOVH %s, %s", p.srcAsmW(ops[0], 2), operandReg(ops[1]))
-	case "MOVWQZX": // load/extend uint16, zero-extend
+	case "MOVWQZX", "MOVWLZX": // load/extend uint16, zero-extend
+		// The two differ only in named destination width, not in result: x86
+		// zeroes bits 63:32 on any 32-bit destination write, so the L form
+		// leaves the same fully zero-extended register the Q form does, and
+		// MOVHU zero-extends to the whole register either way. This is the
+		// same reasoning that lets MOVBQZX and MOVBLZX share a lowering below.
+		// No high-byte case exists at this width, so none is checked.
 		p.emit("MOVHU %s, %s", p.srcAsmW(ops[0], 2), operandReg(ops[1]))
 	case "MOVBQZX", "MOVBQSX", "MOVBLSX", "MOVBLZX":
 		// A high-byte source (AH/BH/CH/DH) names bits 15:8 but renames to the

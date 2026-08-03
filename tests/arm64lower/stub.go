@@ -222,6 +222,8 @@ func MemProp6(x uint64, y uint64, p *[8]uint64) uint64
 
 func MemProp7(x uint64, y uint64, p *[8]uint64) uint64
 
+func MovwzxL(p *[4]uint16, i uint64) uint64
+
 func MovbzxHigh(x uint64) uint64
 
 func CmovL32(x uint64, y uint64) uint64

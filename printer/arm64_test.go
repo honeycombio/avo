@@ -445,6 +445,64 @@ func TestARM64DoubleShiftRejected(t *testing.T) {
 	}
 }
 
+// TestARM64ZeroExtendWidthPairs checks that the L- and Q-destination forms of
+// each zero-extending load lower identically.
+//
+// They differ only in the named width of the destination, not in the value
+// produced: x86 zeroes bits 63:32 on any 32-bit register write, so MOVWLZX
+// leaves the same fully zero-extended register MOVWQZX does, and the arm64
+// MOVBU/MOVHU zero-extend across the whole register either way. Emitting a
+// narrowing step for the L forms would be wrong, and refusing them outright
+// would reject programs the Q forms already accept.
+func TestARM64ZeroExtendWidthPairs(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		build func(ctx *build.Context)
+		want  string
+	}{
+		{
+			name:  "MOVWQZX",
+			build: func(ctx *build.Context) { ctx.MOVWQZX(operand.Mem{Base: reg.RAX}, reg.RCX) },
+			want:  "MOVHU (R0), R1",
+		},
+		{
+			// The L forms take a 32-bit destination; the point of the pairing
+			// is that this still yields the same fully zero-extended register.
+			name:  "MOVWLZX",
+			build: func(ctx *build.Context) { ctx.MOVWLZX(operand.Mem{Base: reg.RAX}, reg.ECX) },
+			want:  "MOVHU (R0), R1",
+		},
+		{
+			name:  "MOVBQZX",
+			build: func(ctx *build.Context) { ctx.MOVBQZX(operand.Mem{Base: reg.RAX}, reg.RCX) },
+			want:  "MOVBU (R0), R1",
+		},
+		{
+			name:  "MOVBLZX",
+			build: func(ctx *build.Context) { ctx.MOVBLZX(operand.Mem{Base: reg.RAX}, reg.ECX) },
+			want:  "MOVBU (R0), R1",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("zeroextend")
+			ctx.SignatureExpr("func()")
+			tc.build(ctx)
+			ctx.RET()
+
+			out := printARM64(t, ctx, printer.NewGoRunConfig())
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("expected %q in output:\n%s", tc.want, out)
+			}
+			// A narrowing step after the load would mean the lowering thought
+			// the upper half needed clearing, which it never does here.
+			if strings.Contains(out, "MOVWU R1, R1") {
+				t.Errorf("unexpected narrowing of an already zero-extended value:\n%s", out)
+			}
+		})
+	}
+}
+
 // TestARM64PseudoSPLocalsOffset checks that avo's frame-relative locals land
 // above the saved link register. x86 puts local 0 at SP+0 because CALL has
 // already pushed the return address above the frame; arm64 spills the link

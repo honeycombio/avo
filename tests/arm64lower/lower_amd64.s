@@ -1329,6 +1329,15 @@ TEXT ·MemProp7(SB), NOSPLIT, $0-32
 	MOVQ    AX, ret+24(FP)
 	RET
 
+// func MovwzxL(p *[4]uint16, i uint64) uint64
+TEXT ·MovwzxL(SB), NOSPLIT, $0-24
+	MOVQ    p+0(FP), AX
+	MOVQ    i+8(FP), CX
+	MOVQ    $0xffffffffffffffff, DX
+	MOVWLZX (AX)(CX*2), DX
+	MOVQ    DX, ret+16(FP)
+	RET
+
 // func MovbzxHigh(x uint64) uint64
 TEXT ·MovbzxHigh(SB), NOSPLIT, $0-16
 	MOVQ    x+0(FP), AX

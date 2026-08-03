@@ -690,6 +690,18 @@ func TestReviewRegressions(t *testing.T) {
 			}
 		}
 	})
+
+	// The destination arrives holding all ones, so a lowering that extended the
+	// halfword without clearing bits 63:16 returns something far larger than the
+	// loaded value rather than quietly agreeing.
+	t.Run("MovwzxL", func(t *testing.T) {
+		buf := [4]uint16{0x0000, 0xffff, 0x8001, 0x1234}
+		for i := uint64(0); i < uint64(len(buf)); i++ {
+			if got, want := MovwzxL(&buf, i), uint64(buf[i]); got != want {
+				t.Errorf("MovwzxL(buf[%d]=%#x) = %#x, want %#x", i, buf[i], got, want)
+			}
+		}
+	})
 }
 
 // TestSecondRoundRegressions covers the lowering bugs found by the independent
