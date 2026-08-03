@@ -704,6 +704,37 @@ func main() {
 		RET()
 	}
 
+	// BtBranch/BtBranchClear: BTL followed immediately by a carry branch,
+	// which lowers to a single arm64 TBNZ or TBZ rather than to anything that
+	// materializes CF. Setting CF and letting the generic branch path run would
+	// invert the test -- armCond maps the carry conditions by their meaning
+	// after a compare, where the two architectures use opposite borrow senses,
+	// and BT's CF is a raw bit with no borrow about it. A lowering that made
+	// that mistake returns exactly the wrong branch's value on every input, so
+	// these two pin the polarity in both directions.
+	//
+	// Bit 3 rather than bit 0 so the immediate is carried through rather than
+	// happening to work as a zero test.
+	btBranch := func(name string, bit uint64, jmp func(operand.Op)) {
+		TEXT(name, NOSPLIT, "func(x uint64) uint64")
+		x := GP64()
+		Load(Param("x"), x)
+		res := GP64()
+		BTL(operand.U8(uint8(bit)), x.As32())
+		jmp(operand.LabelRef(name + "_taken"))
+		MOVQ(operand.U64(20), res)
+		JMP(operand.LabelRef(name + "_end"))
+		Label(name + "_taken")
+		MOVQ(operand.U64(10), res)
+		Label(name + "_end")
+		Store(res, ReturnIndex(0))
+		RET()
+	}
+	btBranch("BtBranch", 0, JC)       // branch when the bit is set
+	btBranch("BtBranchHigh", 3, JC)   // ... with a non-zero bit index
+	btBranch("BtBranchClear", 0, JNC) // branch when the bit is clear
+	btBranch("BtBranchClearHigh", 3, JNC)
+
 	// ---- regression cases for lowering bugs found in review ----
 
 	// MovwzxL: the 32-bit-destination form of a halfword zero-extend, loaded

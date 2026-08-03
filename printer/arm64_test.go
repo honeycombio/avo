@@ -445,6 +445,116 @@ func TestARM64DoubleShiftRejected(t *testing.T) {
 	}
 }
 
+// TestARM64BitTestGuards checks that BTL is accepted only in the one shape that
+// fuses into an arm64 test-and-branch, and refused everywhere else.
+//
+// The refusals are the substance of the feature, not trimming around it. x86 BT
+// defines only CF; OF/SF/AF/PF are architecturally undefined, and AMD has
+// printed ZF that way too. So a BTL whose flags reach anything other than the
+// carry branch fused with it would be a branch on flags no manual promises.
+// Keeping BTL out of both flagSetter and isFlagTransparent is what makes those
+// cases land on the existing unknown-producer panic rather than lower quietly.
+func TestARM64BitTestGuards(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		build func(ctx *build.Context)
+		want  string
+	}{
+		{
+			// The one accepted shape, as a control on the refusals below.
+			name: "carry branch fused",
+			build: func(ctx *build.Context) {
+				ctx.BTL(operand.U8(0), reg.ECX)
+				ctx.JC(operand.LabelRef("target"))
+			},
+			want: "",
+		},
+		{
+			name: "non-carry consumer",
+			build: func(ctx *build.Context) {
+				ctx.BTL(operand.U8(0), reg.ECX)
+				ctx.JEQ(operand.LabelRef("target"))
+			},
+			want: "carry branch",
+		},
+		{
+			// x86 leaves CF live after BT, so a second consumer is legal there;
+			// the fused TBNZ writes no flags, so it must not be lowered.
+			name: "second carry consumer",
+			build: func(ctx *build.Context) {
+				ctx.BTL(operand.U8(0), reg.ECX)
+				ctx.JC(operand.LabelRef("target"))
+				ctx.JC(operand.LabelRef("other"))
+			},
+			want: "cannot emit as a flag-setter",
+		},
+		{
+			name: "no consumer",
+			build: func(ctx *build.Context) {
+				ctx.BTL(operand.U8(0), reg.ECX)
+				ctx.MOVQ(reg.RAX, reg.RBX)
+			},
+			want: "carry branch",
+		},
+		{
+			name: "register bit index",
+			build: func(ctx *build.Context) {
+				ctx.BTL(reg.EAX, reg.ECX)
+				ctx.JC(operand.LabelRef("target"))
+			},
+			want: "register bit index",
+		},
+		{
+			name: "bit index at operand width",
+			build: func(ctx *build.Context) {
+				ctx.BTL(operand.U8(32), reg.ECX)
+				ctx.JC(operand.LabelRef("target"))
+			},
+			want: "not below the 32-bit operand width",
+		},
+		{
+			name: "memory operand",
+			build: func(ctx *build.Context) {
+				ctx.BTL(operand.U8(0), operand.Mem{Base: reg.RAX})
+				ctx.JC(operand.LabelRef("target"))
+			},
+			want: "memory operand",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := build.NewContext()
+			ctx.Function("bt")
+			ctx.SignatureExpr("func()")
+			tc.build(ctx)
+			ctx.Label("target")
+			ctx.Label("other")
+			ctx.RET()
+
+			var recovered interface{}
+			out := func() string {
+				defer func() { recovered = recover() }()
+				return printARM64(t, ctx, printer.NewGoRunConfig())
+			}()
+
+			if tc.want == "" {
+				if recovered != nil {
+					t.Fatalf("expected this shape to lower, got panic: %v", recovered)
+				}
+				if !strings.Contains(out, "TBNZ $0x00, R1, target") {
+					t.Errorf("expected a fused TBNZ:\n%s", out)
+				}
+				return
+			}
+			if recovered == nil {
+				t.Fatalf("expected a panic containing %q, got output:\n%s", tc.want, out)
+			}
+			if msg := fmt.Sprint(recovered); !strings.Contains(msg, tc.want) {
+				t.Errorf("panic %q does not mention %q", msg, tc.want)
+			}
+		})
+	}
+}
+
 // TestARM64ZeroExtendWidthPairs checks that the L- and Q-destination forms of
 // each zero-extending load lower identically.
 //

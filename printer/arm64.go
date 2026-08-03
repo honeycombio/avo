@@ -299,6 +299,14 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	nodes := f.Nodes
 	setflags := flagProducers(nodes)
 	subwordSafe := subwordSafeEqNe(nodes)
+	bt := btPairs(nodes)
+	// The branch half of each fused pair emits nothing of its own: the TBNZ
+	// stands in for both. Skipping it by index rather than by advancing past
+	// it keeps any comments between the two in the output.
+	fusedBranch := make(map[int]bool, len(bt))
+	for _, f := range bt {
+		fusedBranch[f.branch] = true
+	}
 	p.constOK = false
 	for idx := 0; idx < len(nodes); idx++ {
 		switch n := nodes[idx].(type) {
@@ -320,6 +328,9 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 				p.Printf("\t// %s\n", line)
 			}
 		case *ir.Instruction:
+			if fusedBranch[idx] {
+				continue
+			}
 			if len(n.Suffixes) != 0 {
 				// The dispatch keys on the opcode alone, so a suffix's meaning
 				// (zeroing, broadcast, rounding) would simply be discarded. Only
@@ -344,6 +355,18 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 					panic(fmt.Sprintf("arm64: JMP to a non-label target (%s) is not supported", n.Operands[0].Asm()))
 				}
 				p.emit("JMP %s", n.Operands[0].Asm())
+			case bt[idx].mnemonic != "":
+				// BTL + adjacent carry branch, emitted as one test-and-branch.
+				// TBNZ/TBZ have a 14-bit branch range where B.cond has 19;
+				// Go's arm64 assembler rewrites an out-of-range one into an
+				// inverted skip over an unconditional branch during its span
+				// pass, so a long function needs no handling here. A non-Go
+				// assembler would reject it outright rather than mis-branch.
+				f := bt[idx]
+				p.emit("%s %s, %s, %s", f.mnemonic,
+					n.Operands[0].Asm(),
+					operandReg(n.Operands[1]),
+					nodes[f.branch].(*ir.Instruction).Operands[0].Asm())
 			case strings.HasPrefix(n.Opcode, "CMOV"):
 				p.lowerCMOV(n)
 			case strings.HasPrefix(n.Opcode, "SET"):
@@ -418,6 +441,9 @@ var arm64WritesNZCV = map[string]bool{
 	"MOVHU": false, "MOVB": false, "MOVBU": false,
 	"FMOVD": false, "FMOVQ": false, "VMOV": false, "VEOR": false,
 	"VCNT": false, "VUADDLV": false,
+	// Test-and-branch: reads one bit of a register directly and writes no
+	// flags at all. See btPairs for why that is sound here.
+	"TBNZ": false, "TBZ": false,
 	"BFI": false, "UBFX": false, "SBFX": false,
 	"RBIT": false, "CLZ": false, "REVW": false,
 
@@ -2106,12 +2132,126 @@ func cmovCond(op string) string {
 // A single-instruction lookahead is insufficient because x86 permits
 // flag-transparent instructions (a MOV, an LEA) between a producer and the
 // branch that consumes it; those must be skipped, not treated as the producer.
+// btFusion records a BTL and its consuming branch, collapsed into one arm64
+// test-and-branch: branch is the node index of the branch being absorbed, and
+// mnemonic is the instruction that replaces the pair.
+type btFusion struct {
+	branch   int
+	mnemonic string
+}
+
+// btPairs finds each BTL that is immediately consumed by a carry branch and
+// maps its node index to that pairing, so the two can be emitted as a single
+// arm64 TBNZ (carry set) or TBZ (carry clear). It panics on any BTL outside
+// that exact shape.
+//
+// Why fuse rather than lower BTL on its own. x86 BT copies the selected bit
+// into CF; Intel documents OF, SF, AF and PF as UNDEFINED afterwards, and AMD
+// has printed ZF as undefined too, so CF is the only flag that means anything
+// across vendors. Materializing CF and letting the generic branch path handle
+// the branch would also be wrong in a way worth naming: armCond maps CS to LO
+// because after a compare the two architectures use opposite borrow senses,
+// but BT's CF is a raw bit with no borrow about it, so that mapping inverts the
+// test. TBNZ/TBZ sidestep both -- they read the bit directly and write no flags.
+//
+// The safety of leaving BTL out of flagSetter and isFlagTransparent is what
+// makes this narrow rather than merely small. Any *other* consumer that reaches
+// a BTL by the backward scan -- a later branch reading the CF that x86 does
+// leave live, a SETCS, an ADC, or a JEQ reading flags BT left undefined --
+// lands on the unknown-producer panic in flagProducers instead of being lowered
+// wrong. Only the one branch fused here is exempted from that scan.
+//
+// Adjacency is required for correctness, not caution. With an instruction in
+// between, emitting the test-and-branch at the BTL would skip it on the taken
+// path, and emitting it at the branch would test a register that instruction
+// may have rewritten. Comments carry no code, so they may sit between.
+func btPairs(nodes []ir.Node) map[int]btFusion {
+	pairs := make(map[int]btFusion)
+	for j, n := range nodes {
+		ins, ok := n.(*ir.Instruction)
+		if !ok || !strings.HasPrefix(ins.Opcode, "BT") || strings.HasPrefix(ins.Opcode, "BTC") ||
+			strings.HasPrefix(ins.Opcode, "BTR") || strings.HasPrefix(ins.Opcode, "BTS") {
+			// BTC/BTR/BTS modify the bit as well as testing it and have their
+			// own lowerings; only the pure test lands here.
+			continue
+		}
+		if ins.Opcode != "BTL" {
+			panic(fmt.Sprintf("arm64: %s is not supported; only BTL, whose bit index this checks is "+
+				"below the operand width, has a lowering", ins.Opcode))
+		}
+		bit, isImm := immVal(ins.Operands[0])
+		if !isImm {
+			panic("arm64: BTL with a register bit index is not supported; " +
+				"x86 masks that index modulo the operand size and TBNZ cannot express it")
+		}
+		if bit < 0 || bit >= 32 {
+			panic(fmt.Sprintf("arm64: BTL bit index %d is not below the 32-bit operand width; "+
+				"x86 would mask it modulo 32 rather than test that bit", bit))
+		}
+		if _, isReg := ins.Operands[1].(reg.Register); !isReg {
+			panic("arm64: BTL against a memory operand is not supported; " +
+				"x86 addresses the bit string beyond the addressed word and TBNZ reads one register")
+		}
+		k := j + 1
+		for k < len(nodes) {
+			if _, isComment := nodes[k].(*ir.Comment); !isComment {
+				break
+			}
+			k++
+		}
+		var branch *ir.Instruction
+		isInstr := false
+		if k < len(nodes) {
+			branch, isInstr = nodes[k].(*ir.Instruction)
+		}
+		next := "end of function"
+		if isInstr {
+			next = branch.Opcode
+		}
+		// Only a carry branch says anything about the bit BT selected; every
+		// other condition reads a flag x86 leaves undefined afterwards. JC and
+		// JCS are one instruction under two names, as are JNC and JCC, and avo
+		// keeps whichever spelling the generator wrote. The comparison-named
+		// aliases for those same encodings (JB, JNAE, JAE, JNB) are left to the
+		// panic: they mean the same thing here, but a borrow name after a BT
+		// reads like the compare-derived carry this lowering deliberately
+		// refuses, and no generator has needed them.
+		var mnemonic string
+		switch {
+		case isInstr && (branch.Opcode == "JC" || branch.Opcode == "JCS"):
+			mnemonic = "TBNZ"
+		case isInstr && (branch.Opcode == "JNC" || branch.Opcode == "JCC"):
+			mnemonic = "TBZ"
+		default:
+			panic(fmt.Sprintf("arm64: BTL is followed by %s, but is only supported when the next "+
+				"instruction is a carry branch (JC/JCS or JNC/JCC), so the two can be fused into one "+
+				"test-and-branch; on its own BT sets a carry flag this lowering cannot represent", next))
+		}
+		if _, ok := branch.Operands[0].(operand.LabelRef); !ok {
+			panic(fmt.Sprintf("arm64: %s fused with BTL targets %s, not a label",
+				branch.Opcode, branch.Operands[0].Asm()))
+		}
+		pairs[j] = btFusion{branch: k, mnemonic: mnemonic}
+	}
+	return pairs
+}
+
 func flagProducers(nodes []ir.Node) map[int]bool {
 	setflags := make(map[int]bool)
+	// A branch fused into a TBNZ reads its bit straight from the register, so
+	// it has no flag producer to find. Left in the scan below it would walk
+	// back to its BTL and panic there.
+	fused := make(map[int]bool)
+	for _, f := range btPairs(nodes) {
+		fused[f.branch] = true
+	}
 	for j, n := range nodes {
 		ins, ok := n.(*ir.Instruction)
 		if !ok || !(strings.HasPrefix(ins.Opcode, "CMOV") || strings.HasPrefix(ins.Opcode, "SET") ||
 			strings.HasPrefix(ins.Opcode, "ADC") || isConditionalBranch(ins)) {
+			continue
+		}
+		if fused[j] {
 			continue
 		}
 		found := false

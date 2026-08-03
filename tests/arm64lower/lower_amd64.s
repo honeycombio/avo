@@ -1329,6 +1329,66 @@ TEXT ·MemProp7(SB), NOSPLIT, $0-32
 	MOVQ    AX, ret+24(FP)
 	RET
 
+// func BtBranch(x uint64) uint64
+TEXT ·BtBranch(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	BTL  $0x00, AX
+	JC   BtBranch_taken
+	MOVQ $0x0000000000000014, AX
+	JMP  BtBranch_end
+
+BtBranch_taken:
+	MOVQ $0x000000000000000a, AX
+
+BtBranch_end:
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func BtBranchHigh(x uint64) uint64
+TEXT ·BtBranchHigh(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	BTL  $0x03, AX
+	JC   BtBranchHigh_taken
+	MOVQ $0x0000000000000014, AX
+	JMP  BtBranchHigh_end
+
+BtBranchHigh_taken:
+	MOVQ $0x000000000000000a, AX
+
+BtBranchHigh_end:
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func BtBranchClear(x uint64) uint64
+TEXT ·BtBranchClear(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	BTL  $0x00, AX
+	JNC  BtBranchClear_taken
+	MOVQ $0x0000000000000014, AX
+	JMP  BtBranchClear_end
+
+BtBranchClear_taken:
+	MOVQ $0x000000000000000a, AX
+
+BtBranchClear_end:
+	MOVQ AX, ret+8(FP)
+	RET
+
+// func BtBranchClearHigh(x uint64) uint64
+TEXT ·BtBranchClearHigh(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	BTL  $0x03, AX
+	JNC  BtBranchClearHigh_taken
+	MOVQ $0x0000000000000014, AX
+	JMP  BtBranchClearHigh_end
+
+BtBranchClearHigh_taken:
+	MOVQ $0x000000000000000a, AX
+
+BtBranchClearHigh_end:
+	MOVQ AX, ret+8(FP)
+	RET
+
 // func MovwzxL(p *[4]uint16, i uint64) uint64
 TEXT ·MovwzxL(SB), NOSPLIT, $0-24
 	MOVQ    p+0(FP), AX

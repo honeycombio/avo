@@ -691,6 +691,37 @@ func TestReviewRegressions(t *testing.T) {
 		}
 	})
 
+	// A lowering that materialized CF and let the generic branch path run would
+	// invert every one of these, since the carry conditions are mapped by their
+	// meaning after a compare rather than as a raw bit. The two polarities and
+	// two bit indices between them catch that and a dropped immediate.
+	t.Run("BtBranch", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			got  func(uint64) uint64
+			bit  uint
+			set  bool // value returned when the tested bit is 1
+		}{
+			{"BtBranch", BtBranch, 0, true},
+			{"BtBranchHigh", BtBranchHigh, 3, true},
+			{"BtBranchClear", BtBranchClear, 0, false},
+			{"BtBranchClearHigh", BtBranchClearHigh, 3, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				for _, x := range []uint64{0, 1, 8, 9, ^uint64(0), ^uint64(1), ^uint64(8), 0x1234567890abcdef} {
+					bitSet := x&(1<<tc.bit) != 0
+					want := uint64(20)
+					if bitSet == tc.set {
+						want = 10
+					}
+					if got := tc.got(x); got != want {
+						t.Errorf("%s(%#x): bit %d is %v, got %d, want %d", tc.name, x, tc.bit, bitSet, got, want)
+					}
+				}
+			})
+		}
+	})
+
 	// The destination arrives holding all ones, so a lowering that extended the
 	// halfword without clearing bits 63:16 returns something far larger than the
 	// loaded value rather than quietly agreeing.
