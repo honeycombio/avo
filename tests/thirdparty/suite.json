@@ -761,11 +761,11 @@
                 "stars": 135454
             },
             "default_branch": "master",
-            "version": "go1.23.4",
+            "version": "go1.26.5",
             "packages": [
                 {
-                    "pkg": "src/crypto/internal/bigmod",
-                    "module": "src/crypto/internal/bigmod/_asm/go.mod",
+                    "pkg": "src/crypto/internal/fips140/bigmod",
+                    "module": "src/crypto/internal/fips140/bigmod/_asm/go.mod",
                     "root": ".",
                     "setup": [
                         {
@@ -779,7 +779,7 @@
                     "generate": [
                         {
                             "commands": [
-                                "env --unset=GOROOT ./bin/go generate -v -x ./src/crypto/internal/bigmod/_asm"
+                                "env --unset=GOROOT ./bin/go generate -v -x ./src/crypto/internal/fips140/bigmod/_asm"
                             ]
                         }
                     ],
@@ -792,8 +792,8 @@
                     ]
                 },
                 {
-                    "pkg": "src/crypto/internal/edwards25519",
-                    "module": "src/crypto/internal/edwards25519/field/_asm/go.mod",
+                    "pkg": "src/crypto/internal/fips140/edwards25519",
+                    "module": "src/crypto/internal/fips140/edwards25519/field/_asm/go.mod",
                     "root": ".",
                     "setup": [
                         {
@@ -807,7 +807,7 @@
                     "generate": [
                         {
                             "commands": [
-                                "env --unset=GOROOT ./bin/go generate -v -x ./src/crypto/internal/edwards25519/field/_asm"
+                                "env --unset=GOROOT ./bin/go generate -v -x ./src/crypto/internal/fips140/edwards25519/field/_asm"
                             ]
                         }
                     ],
