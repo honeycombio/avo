@@ -20,6 +20,14 @@ func ZeroExt32(x uint64) uint64
 
 func HighByte(x uint64) uint64
 
+func ShiftExtractByte64Lo(x uint64) uint64
+
+func ShiftExtractByte64Mid(x uint64) uint64
+
+func ShiftExtractByte64Hi(x uint64) uint64
+
+func ShiftExtractByte32(x uint64) uint64
+
 func LoadIdx(p *[8]uint64, i uint64) uint64
 
 func Copy16(dst *[16]byte, src *[16]byte)
@@ -301,6 +309,10 @@ func LeaQ(x uint64, y uint64) uint64
 func TestQZero(x uint64, y uint64) uint64
 
 func TestBZero(x uint64, y uint64) uint64
+
+func TestBSelfZero(x uint64) uint64
+
+func TestWSelfZero(x uint64) uint64
 
 func VecCopyReg(dst *[16]byte, src *[16]byte)
 
