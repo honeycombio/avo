@@ -1277,6 +1277,147 @@ func main() {
 		RET()
 	}
 
+	// The copy folds the arm64 printer applies to x86's shift idioms (see
+	// shiftFolds in printer/arm64.go). x86 needs the variable count in CL and
+	// shifts in place, so avo programs copy the count and the source before
+	// every shift; arm64 reads both from wherever they are. Each function
+	// keeps the original registers live past the shift so the allocator
+	// cannot coalesce the copies away before the printer sees them (see the
+	// shiftExtractByte comment above), and follows the shift with a fresh
+	// definition of RCX, the shape the fold requires.
+	TEXT("ShlCountFold", NOSPLIT, "func(x, n uint64) uint64")
+	{
+		x, n, y := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("n"), n)
+		MOVQ(n, reg.RCX)
+		MOVQ(x, y)
+		SHLQ(reg.CL, y)
+		MOVQ(x, reg.RCX) // RCX redefined without being read: the count copy is dead
+		ADDQ(reg.RCX, y)
+		ADDQ(n, y)
+		Store(y, ReturnIndex(0))
+		RET()
+	}
+	TEXT("ShrCountFold32", NOSPLIT, "func(x, n uint64) uint64")
+	{
+		x, n, y := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("n"), n)
+		MOVQ(n, reg.RCX)
+		MOVQ(x, y)
+		SHRL(reg.CL, y.As32())
+		MOVQ(x, reg.RCX)
+		ADDQ(reg.RCX, y)
+		ADDQ(n, y)
+		Store(y, ReturnIndex(0))
+		RET()
+	}
+	TEXT("RolCountFold", NOSPLIT, "func(x, n uint64) uint64")
+	{
+		x, n, y := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("n"), n)
+		MOVQ(n, reg.RCX)
+		MOVQ(x, y)
+		ROLQ(reg.CL, y)
+		MOVQ(x, reg.RCX)
+		ADDQ(reg.RCX, y)
+		ADDQ(n, y)
+		Store(y, ReturnIndex(0))
+		RET()
+	}
+	// CountFoldRefusedRead reads the count copy after the shift, so the copy
+	// must survive; the lowering has to stay correct with the fold refused.
+	TEXT("CountFoldRefusedRead", NOSPLIT, "func(x, n uint64) uint64")
+	{
+		x, n, y := GP64(), GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("n"), n)
+		MOVQ(n, reg.RCX)
+		MOVQ(x, y)
+		SHLQ(reg.CL, y)
+		ADDQ(reg.RCX, y)
+		ADDQ(n, y)
+		Store(y, ReturnIndex(0))
+		RET()
+	}
+	// ShlCountSelf shifts RCX by CL: the copied value is both count and data,
+	// which the fold refuses.
+	TEXT("ShlCountSelf", NOSPLIT, "func(n uint64) uint64")
+	{
+		n := GP64()
+		Load(Param("n"), n)
+		MOVQ(n, reg.RCX)
+		SHLQ(reg.CL, reg.RCX)
+		ADDQ(n, reg.RCX)
+		Store(reg.RCX, ReturnIndex(0))
+		RET()
+	}
+	// SarCopyFold: only the source copy is redundant (immediate count).
+	TEXT("SarCopyFold", NOSPLIT, "func(x uint64) uint64")
+	{
+		x, y := GP64(), GP64()
+		Load(Param("x"), x)
+		MOVQ(x, y)
+		SARQ(operand.U8(3), y)
+		ADDQ(x, y)
+		Store(y, ReturnIndex(0))
+		RET()
+	}
+	// ShlCopyFoldCX: the copy's destination is RCX, but with an immediate
+	// count nothing aliases it, so the source fold still applies.
+	TEXT("ShlCopyFoldCX", NOSPLIT, "func(x uint64) uint64")
+	{
+		x := GP64()
+		Load(Param("x"), x)
+		MOVQ(x, reg.RCX)
+		SHLQ(operand.U8(2), reg.RCX)
+		ADDQ(x, reg.RCX)
+		Store(reg.RCX, ReturnIndex(0))
+		RET()
+	}
+
+	// AdcAccumQ: the full-width form of AdcAccum (ADCQ $0), the shape the
+	// huff0 4X decoders now use for their exhausted counter.
+	TEXT("AdcAccumQ", NOSPLIT, "func(x, acc uint64) uint64")
+	{
+		x, acc := GP64(), GP64()
+		Load(Param("x"), x)
+		Load(Param("acc"), acc)
+		CMPQ(x, operand.Imm(4))
+		ADCQ(operand.I8(0), acc)
+		Store(acc, ReturnIndex(0))
+		RET()
+	}
+	// SetGeZeroMov: SetGe with the destination zeroed by a move rather than an
+	// XOR, the other zeroing setccFolds recognizes.
+	TEXT("SetGeZeroMov", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a, b, dst := GP64(), GP64(), GP64()
+		Load(Param("a"), a)
+		Load(Param("b"), b)
+		MOVQ(operand.U32(0), dst)
+		CMPQ(a, b)
+		SETGE(dst.As8())
+		Store(dst, ReturnIndex(0))
+		RET()
+	}
+	// SetGeRefusedRead reads the zeroed register before the SETcc, so the
+	// zeroing must survive and the byte insert must be exact.
+	TEXT("SetGeRefusedRead", NOSPLIT, "func(a, b uint64) uint64")
+	{
+		a, b, dst := GP64(), GP64(), GP64()
+		Load(Param("a"), a)
+		Load(Param("b"), b)
+		XORQ(dst, dst)
+		ADDQ(dst, a)
+		CMPQ(a, b)
+		SETGE(dst.As8())
+		Store(dst, ReturnIndex(0))
+		RET()
+	}
+
 	Generate()
 }
 

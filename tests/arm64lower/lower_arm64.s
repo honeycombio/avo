@@ -577,10 +577,8 @@ TEXT ·ShrXConst9(SB), NOSPLIT, $0-16
 TEXT ·SetGe(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
-	MOVD $0, R2
 	CMP  R1, R0
-	CSET GE, R16
-	BFI  $0, R16, $8, R2
+	CSET GE, R2
 	MOVD R2, ret+16(FP)
 	RET
 
@@ -1647,13 +1645,11 @@ TEXT ·IncQMem(SB), NOSPLIT, $0-8
 // func CmpBHigh(x uint64) uint64
 TEXT ·CmpBHigh(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	MOVD $0, R3
 	MOVD $0x02, R16
 	AND  $0xff, R16, R16
 	UBFX $8, R0, $8, R15
 	CMP  R16, R15
-	CSET EQ, R16
-	BFI  $0, R16, $8, R3
+	CSET EQ, R3
 	MOVD R3, ret+8(FP)
 	RET
 
@@ -1680,10 +1676,8 @@ TEXT ·MulXAlias(SB), NOSPLIT, $0-24
 TEXT ·TestQImm(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
-	MOVD $0, R1
 	TST  $0x00000010, R0
-	CSET EQ, R16
-	BFI  $0, R16, $8, R1
+	CSET EQ, R1
 	MOVD R1, ret+16(FP)
 	RET
 
@@ -1790,10 +1784,8 @@ cqb_end:
 // func TestQBit31(x uint64) uint64
 TEXT ·TestQBit31(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	MOVD $0, R1
 	TST  $-2147483648, R0
-	CSET EQ, R16
-	BFI  $0, R16, $8, R1
+	CSET EQ, R1
 	MOVD R1, ret+8(FP)
 	RET
 
@@ -1814,27 +1806,19 @@ TEXT ·MovQBit31Reg(SB), NOSPLIT, $0-8
 TEXT ·CmpLIntMin(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
 	MOVD $0, R1
-	MOVD $0, R2
 	CMPW $-2147483648, R0
-	CSET LT, R16
-	BFI  $0, R16, $8, R2
+	CSET LT, R2
 	ORR  R2, R1, R1
-	MOVD $0, R2
 	CMPW $-2147483648, R0
-	CSET GE, R16
-	BFI  $0, R16, $8, R2
+	CSET GE, R2
 	LSL  $0x01, R2, R2
 	ORR  R2, R1, R1
-	MOVD $0, R2
 	CMPW $-2147483648, R0
-	CSET GT, R16
-	BFI  $0, R16, $8, R2
+	CSET GT, R2
 	LSL  $0x02, R2, R2
 	ORR  R2, R1, R1
-	MOVD $0, R2
 	CMPW $-2147483648, R0
-	CSET LE, R16
-	BFI  $0, R16, $8, R2
+	CSET LE, R2
 	LSL  $0x03, R2, R2
 	ORR  R2, R1, R1
 	MOVD R1, ret+8(FP)
@@ -1943,10 +1927,8 @@ TEXT ·LeaQ(SB), NOSPLIT, $0-24
 TEXT ·TestQZero(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
-	MOVD $0, R2
 	TST  R1, R0
-	CSET EQ, R16
-	BFI  $0, R16, $8, R2
+	CSET EQ, R2
 	MOVD R2, ret+16(FP)
 	RET
 
@@ -1954,32 +1936,26 @@ TEXT ·TestQZero(SB), NOSPLIT, $0-24
 TEXT ·TestBZero(SB), NOSPLIT, $0-24
 	MOVD x+0(FP), R0
 	MOVD y+8(FP), R1
-	MOVD $0, R2
 	AND  $0xff, R1, R16
 	AND  $0xff, R0, R15
 	TST  R16, R15
-	CSET EQ, R16
-	BFI  $0, R16, $8, R2
+	CSET EQ, R2
 	MOVD R2, ret+16(FP)
 	RET
 
 // func TestBSelfZero(x uint64) uint64
 TEXT ·TestBSelfZero(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	MOVD $0, R1
 	TST  $0xff, R0
-	CSET EQ, R16
-	BFI  $0, R16, $8, R1
+	CSET EQ, R1
 	MOVD R1, ret+8(FP)
 	RET
 
 // func TestWSelfZero(x uint64) uint64
 TEXT ·TestWSelfZero(SB), NOSPLIT, $0-16
 	MOVD x+0(FP), R0
-	MOVD $0, R1
 	TST  $0xffff, R0
-	CSET EQ, R16
-	BFI  $0, R16, $8, R1
+	CSET EQ, R1
 	MOVD R1, ret+8(FP)
 	RET
 
@@ -1998,87 +1974,59 @@ TEXT ·SetAll(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD b+8(FP), R1
 	MOVD $0, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET EQ, R16
-	BFI  $0, R16, $8, R3
+	CSET EQ, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET NE, R16
-	BFI  $0, R16, $8, R3
+	CSET NE, R3
 	LSL  $0x01, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET LT, R16
-	BFI  $0, R16, $8, R3
+	CSET LT, R3
 	LSL  $0x02, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET LE, R16
-	BFI  $0, R16, $8, R3
+	CSET LE, R3
 	LSL  $0x03, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET GT, R16
-	BFI  $0, R16, $8, R3
+	CSET GT, R3
 	LSL  $0x04, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET GE, R16
-	BFI  $0, R16, $8, R3
+	CSET GE, R3
 	LSL  $0x05, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET LO, R16
-	BFI  $0, R16, $8, R3
+	CSET LO, R3
 	LSL  $0x06, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET HS, R16
-	BFI  $0, R16, $8, R3
+	CSET HS, R3
 	LSL  $0x07, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET HI, R16
-	BFI  $0, R16, $8, R3
+	CSET HI, R3
 	LSL  $0x08, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET LS, R16
-	BFI  $0, R16, $8, R3
+	CSET LS, R3
 	LSL  $0x09, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET MI, R16
-	BFI  $0, R16, $8, R3
+	CSET MI, R3
 	LSL  $0x0a, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET PL, R16
-	BFI  $0, R16, $8, R3
+	CSET PL, R3
 	LSL  $0x0b, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET VS, R16
-	BFI  $0, R16, $8, R3
+	CSET VS, R3
 	LSL  $0x0c, R3, R3
 	ORR  R3, R2, R2
-	MOVD $0, R3
 	CMP  R1, R0
-	CSET VC, R16
-	BFI  $0, R16, $8, R3
+	CSET VC, R3
 	LSL  $0x0d, R3, R3
 	ORR  R3, R2, R2
 	MOVD R2, ret+16(FP)
@@ -2280,5 +2228,105 @@ TEXT ·CmovAll(SB), NOSPLIT, $0-24
 	CMP  R1, R0
 	CSEL VC, R3, R5, R5
 	ORR  R5, R2, R2
+	MOVD R2, ret+16(FP)
+	RET
+
+// func ShlCountFold(x uint64, n uint64) uint64
+TEXT ·ShlCountFold(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R2
+	LSL  R2, R0, R3
+	MOVD R0, R1
+	ADD  R1, R3, R3
+	ADD  R2, R3, R3
+	MOVD R3, ret+16(FP)
+	RET
+
+// func ShrCountFold32(x uint64, n uint64) uint64
+TEXT ·ShrCountFold32(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R2
+	LSRW R2, R0, R3
+	MOVD R0, R1
+	ADD  R1, R3, R3
+	ADD  R2, R3, R3
+	MOVD R3, ret+16(FP)
+	RET
+
+// func RolCountFold(x uint64, n uint64) uint64
+TEXT ·RolCountFold(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R2
+	NEG  R2, R16
+	ROR  R16, R0, R3
+	MOVD R0, R1
+	ADD  R1, R3, R3
+	ADD  R2, R3, R3
+	MOVD R3, ret+16(FP)
+	RET
+
+// func CountFoldRefusedRead(x uint64, n uint64) uint64
+TEXT ·CountFoldRefusedRead(SB), NOSPLIT, $0-24
+	MOVD x+0(FP), R0
+	MOVD n+8(FP), R2
+	MOVD R2, R1
+	LSL  R1, R0, R0
+	ADD  R1, R0, R0
+	ADD  R2, R0, R0
+	MOVD R0, ret+16(FP)
+	RET
+
+// func ShlCountSelf(n uint64) uint64
+TEXT ·ShlCountSelf(SB), NOSPLIT, $0-16
+	MOVD n+0(FP), R0
+	MOVD R0, R1
+	LSL  R1, R1, R1
+	ADD  R0, R1, R1
+	MOVD R1, ret+8(FP)
+	RET
+
+// func SarCopyFold(x uint64) uint64
+TEXT ·SarCopyFold(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	ASR  $0x03, R0, R1
+	ADD  R0, R1, R1
+	MOVD R1, ret+8(FP)
+	RET
+
+// func ShlCopyFoldCX(x uint64) uint64
+TEXT ·ShlCopyFoldCX(SB), NOSPLIT, $0-16
+	MOVD x+0(FP), R0
+	LSL  $0x02, R0, R1
+	ADD  R0, R1, R1
+	MOVD R1, ret+8(FP)
+	RET
+
+// func AdcAccumQ(x uint64, acc uint64) uint64
+TEXT ·AdcAccumQ(SB), NOSPLIT, $0-24
+	MOVD  x+0(FP), R0
+	MOVD  acc+8(FP), R1
+	CMP   $0x04, R0
+	CSINC HS, R1, R1, R1
+	MOVD  R1, ret+16(FP)
+	RET
+
+// func SetGeZeroMov(a uint64, b uint64) uint64
+TEXT ·SetGeZeroMov(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	CMP  R1, R0
+	CSET GE, R2
+	MOVD R2, ret+16(FP)
+	RET
+
+// func SetGeRefusedRead(a uint64, b uint64) uint64
+TEXT ·SetGeRefusedRead(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R0
+	MOVD b+8(FP), R1
+	MOVD $0, R2
+	ADD  R2, R0, R0
+	CMP  R1, R0
+	CSET GE, R16
+	BFI  $0, R16, $8, R2
 	MOVD R2, ret+16(FP)
 	RET

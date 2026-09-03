@@ -82,6 +82,10 @@ type arm64 struct {
 	constReg string
 	constVal int64
 	constOK  bool
+
+	// The operand rewrites shiftFolds decided for the shift being lowered,
+	// zero for every other instruction.
+	shift shiftFold
 }
 
 // NewARM64Asm constructs a printer for writing Go arm64 assembly files by
@@ -308,6 +312,8 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 		fusedBranch[f.branch] = true
 	}
 	byteFold := shiftExtractFold(nodes)
+	shifts, dropped := shiftFolds(nodes)
+	setFull := setccFolds(nodes, setflags, dropped)
 	p.constOK = false
 	for idx := 0; idx < len(nodes); idx++ {
 		if byteFold[idx] {
@@ -337,6 +343,13 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 			if fusedBranch[idx] {
 				continue
 			}
+			if dropped[idx] {
+				// A register copy some later instruction absorbed (see
+				// shiftFolds and setccFolds). Nothing is emitted; the constant
+				// window closes as it would for any register move.
+				p.constOK = false
+				continue
+			}
 			if len(n.Suffixes) != 0 {
 				// The dispatch keys on the opcode alone, so a suffix's meaning
 				// (zeroing, broadcast, rounding) would simply be discarded. Only
@@ -348,6 +361,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 			}
 			p.inTransparent, p.transparentOp = isFlagTransparent(n.Opcode), n.Opcode
 			p.inProducer, p.producerOp, p.writerCount = setflags[idx], n.Opcode, 0
+			p.shift = shifts[idx]
 			switch {
 			case n.Opcode == "JMP":
 				// Only a label target is translatable. A register or memory
@@ -376,7 +390,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 			case strings.HasPrefix(n.Opcode, "CMOV"):
 				p.lowerCMOV(n)
 			case strings.HasPrefix(n.Opcode, "SET"):
-				p.lowerSET(n)
+				p.lowerSET(n, setFull[idx])
 			case isConditionalBranch(n):
 				// Same reasoning as JMP: a relative target is a byte offset, and
 				// a byte offset cannot mean the same thing on two instruction
@@ -401,6 +415,7 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 			}
 			p.inTransparent, p.transparentOp = false, ""
 			p.inProducer, p.producerOp, p.writerCount = false, "", 0
+			p.shift = shiftFold{}
 			p.trackConst(n)
 			if n.IsTerminal || n.IsUnconditionalBranch() {
 				p.flush()
@@ -997,6 +1012,15 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 		d := operandReg(ops[1])
 		p.emit("CSINC HS, %s, %s, %s", d, d, scratchVal)
 		p.emit("BFI $0, %s, $8, %s", scratchVal, d)
+	case "ADCQ":
+		// The full-width form of the same idiom: dst += CF over all 64 bits,
+		// so the CSINC writes the destination directly and nothing needs
+		// inserting. Same producer assumption as ADCB (flagProducers checks).
+		if v, ok := immVal(ops[0]); !ok || v != 0 {
+			panic("arm64: ADCQ only supported with a $0 immediate source")
+		}
+		d := operandReg(ops[1])
+		p.emit("CSINC HS, %s, %s, %s", d, d, d)
 	case "BSWAPL":
 		// Byte-reverse the low 32 bits; the 32-bit result zero-extends, as on x86.
 		r := operandReg(ops[0])
@@ -1570,6 +1594,13 @@ func checkNotDoubleShift(i *ir.Instruction) {
 // lowerShift lowers "SHIFT count, dst" (count imm or register).
 func (p *arm64) lowerShift(op string, count, dst operand.Op, width int) {
 	d := operandReg(dst)
+	// shiftFolds may have absorbed the copy that fed this shift's source or
+	// its count, in which case the arm64 three-operand form reads the
+	// original registers directly (see shiftFolds).
+	s := d
+	if p.shift.src != "" {
+		s = p.shift.src
+	}
 	// x86 masks the shift count to the low 6 bits (64-bit) or 5 (32-bit), so
 	// "SHRQ $64" is a no-op and "SHRQ $65" shifts by one. arm64's register form
 	// masks identically, but its immediate form rejects a count at or above the
@@ -1579,10 +1610,22 @@ func (p *arm64) lowerShift(op string, count, dst operand.Op, width int) {
 		// Only rewrite when the mask actually changes the count. Reformatting an
 		// in-range immediate would churn the generated assembly for no reason:
 		// avo renders these in hex, and "$0x02" and "$2" assemble identically.
-		p.emit("%s $%d, %s, %s", op, n&int64(width-1), d, d)
+		p.emit("%s $%d, %s, %s", op, n&int64(width-1), s, d)
 		return
 	}
-	p.emit("%s %s, %s, %s", op, p.regOrImm(count), d, d)
+	p.emit("%s %s, %s, %s", op, p.shiftCount(count), s, d)
+}
+
+// shiftCount renders a shift's count operand, substituting the register
+// shiftFolds chose when it absorbed the copy into CL.
+func (p *arm64) shiftCount(count operand.Op) string {
+	if p.shift.count != "" {
+		if _, isImm := immAsm(count); isImm {
+			panic("arm64: shiftFolds rewrote the count of an immediate shift")
+		}
+		return p.shift.count
+	}
+	return p.regOrImm(count)
 }
 
 // lowerROL lowers a rotate-left of the given width as arm64's rotate-right by
@@ -1594,6 +1637,10 @@ func (p *arm64) lowerROL(count, dst operand.Op, width int) {
 		ror, neg = "RORW", "NEGW"
 	}
 	d := operandReg(dst)
+	s := d // see lowerShift
+	if p.shift.src != "" {
+		s = p.shift.src
+	}
 	if _, isImm := immAsm(count); isImm {
 		// immVal parses with a base-aware conversion; avo renders immediates in
 		// hex, which a "$%d" scan would silently truncate to 0.
@@ -1601,11 +1648,11 @@ func (p *arm64) lowerROL(count, dst operand.Op, width int) {
 		if !ok {
 			panic("arm64: bad ROL immediate")
 		}
-		p.emit("%s $%d, %s, %s", ror, (int64(width)-n)&int64(width-1), d, d)
+		p.emit("%s $%d, %s, %s", ror, (int64(width)-n)&int64(width-1), s, d)
 		return
 	}
-	p.emit("%s %s, %s", neg, operandReg(count), scratchVal)
-	p.emit("%s %s, %s, %s", ror, scratchVal, d, d)
+	p.emit("%s %s, %s", neg, p.shiftCount(count), scratchVal)
+	p.emit("%s %s, %s, %s", ror, scratchVal, s, d)
 }
 
 // srcRegInto returns a register name holding op's value, loading a memory operand
@@ -2022,13 +2069,19 @@ func (p *arm64) materializeEqNe(bits int, a, b operand.Op) (ra, rb string) {
 
 // lowerSET lowers "SETcc dst". x86 SETcc writes only the low byte of dst, so
 // the 0/1 is materialized with CSET in scratch and inserted into bits 7:0.
-func (p *arm64) lowerSET(i *ir.Instruction) {
+// When setccFolds proved the rest of the register is zero (full), the
+// insert is the whole register and CSET writes it directly.
+func (p *arm64) lowerSET(i *ir.Instruction, full bool) {
 	cc, ok := armCond(strings.TrimPrefix(i.Opcode, "SET"))
 	if !ok {
 		panic(fmt.Sprintf("arm64: unsupported SETcc %q", i.Opcode))
 	}
 	if isHighByte(i.Operands[0]) {
 		panic("arm64: SETcc high-byte destination not supported")
+	}
+	if full {
+		p.emit("CSET %s, %s", cc, operandReg(i.Operands[0]))
+		return
 	}
 	p.emit("CSET %s, %s", cc, scratchVal)
 	p.emit("BFI $0, %s, $8, %s", scratchVal, operandReg(i.Operands[0]))
@@ -2646,4 +2699,289 @@ func (p *arm64) emitShiftExtractFold(mov, shr, ext *ir.Instruction) {
 	p.inProducer, p.producerOp, p.writerCount = false, "", 0
 	p.emit("UBFX $%d, %s, $8, %s", shiftAmt, operandReg(mov.Operands[0]), operandReg(ext.Operands[1]))
 	p.constOK = false
+}
+
+// ---- straight-line register-copy folds ----
+//
+// x86 has two-address shifts whose variable count must sit in CL, so avo
+// programs are full of "MOVQ n, CX; MOVQ x, y; SHLQ CL, y": copy the count
+// into CL, copy the source so it survives, shift in place. arm64 shifts are
+// three-operand and take the count from any register, so both copies are
+// redundant there. The folds below absorb them where a straight-line scan
+// can prove nothing else observes the copy.
+//
+// The reasoning is deliberately local. A scan runs forward from the copy
+// over instructions only -- never across a label, which is where another
+// path could join, and never past a branch or return, beyond which the
+// copy's value might be read on the path not taken. Within that run every
+// instruction's register reads and writes come from the IR's Inputs and
+// Outputs, which include implicit operands (CL for a shift, RAX/RDX for a
+// widening multiply) and the base and index of memory operands, and
+// registers are compared as families, so a write to CL or ECX counts as a
+// write to RCX.
+
+// shiftFold is the operand rewrite shiftFolds decided for one shift: the arm64
+// register to read as the count and/or as the source instead of the copy the
+// x86 program made. Either may be empty.
+type shiftFold struct {
+	count string
+	src   string
+}
+
+// regFamily returns the physical index of a general-purpose register operand,
+// which identifies the register regardless of the width the operand names (AL,
+// AH, EAX and RAX are all index 0), or -1 for anything else: a pseudo register,
+// a vector register, an immediate or a memory operand.
+func regFamily(op operand.Op) int {
+	r, ok := op.(reg.Register)
+	if !ok || r.Kind() != reg.KindGP {
+		return -1
+	}
+	ph, ok := r.(reg.Physical)
+	if !ok {
+		return -1
+	}
+	return int(ph.PhysicalIndex())
+}
+
+// isFullGP reports whether op names a whole 64-bit general-purpose register.
+func isFullGP(op operand.Op) bool {
+	r, ok := op.(reg.Register)
+	return ok && regFamily(op) >= 0 && r.Size() == 8
+}
+
+// readsFamily reports whether ins reads any register of the given family,
+// including through a memory operand's base or index and through implicit
+// operands.
+func readsFamily(ins *ir.Instruction, family int) bool {
+	for _, r := range ins.InputRegisters() {
+		if regFamily(r) == family {
+			return true
+		}
+	}
+	return false
+}
+
+// writesFamily reports whether ins writes any register of the given family,
+// at any width.
+func writesFamily(ins *ir.Instruction, family int) bool {
+	for _, r := range ins.OutputRegisters() {
+		if regFamily(r) == family {
+			return true
+		}
+	}
+	return false
+}
+
+// endsBlock reports whether control may leave the straight-line run at ins:
+// a return, an unconditional jump or a conditional branch. Nothing about the
+// register state on the other side of one of these is known here.
+func endsBlock(ins *ir.Instruction) bool {
+	return ins.IsTerminal || ins.IsUnconditionalBranch() || isConditionalBranch(ins)
+}
+
+// isTwoOperandShift reports whether ins is one of the shifts and rotates that
+// lowerShift/lowerROL handle: "OP count, dst" with a register destination. The
+// three-operand double shifts (SHLQ $n, src, dst is x86 SHLD) are a different
+// instruction and are excluded by the operand count.
+func isTwoOperandShift(ins *ir.Instruction) bool {
+	switch ins.Opcode {
+	case "SHLQ", "SHRQ", "SARQ", "SHLL", "SHRL", "SARL",
+		"ROLQ", "ROLL", "RORQ", "RORL":
+		return len(ins.Operands) == 2 && regFamily(ins.Operands[1]) >= 0
+	}
+	return false
+}
+
+// rcx is the family index of RCX, whose low byte CL is the only register an
+// x86 shift can take its variable count from.
+const rcx = 1
+
+// shiftFolds finds the copies that feed shifts and that the arm64 three-operand
+// forms make redundant, returning the rewrite for each shift and the set of
+// copy nodes to drop.
+//
+// Count fold: "MOVQ Rs, CX" followed, in the same straight-line run, by a
+// shift whose count is CL, where RCX is not otherwise referenced before the
+// shift, Rs is not written before the shift, and the next reference to RCX
+// after the shift is an instruction that writes it without reading it. The
+// shift then takes its count from Rs and the copy is dropped. Rs must be
+// unchanged so the count is the value x86 would have read; RCX must be dead
+// after the shift or its stale value would be observed; and the next reference
+// must be a pure definition so the copy's value is provably never read again
+// on this path. A shift whose destination is RCX itself also reads the copied
+// value as data, and is refused rather than paired with the source fold.
+//
+// Source fold: "MOVQ Ra, Rb" followed, in the same run, by a shift with
+// destination Rb, where Rb is not referenced and Ra is not written in between.
+// The shift then reads Ra as its source and writes Rb, and the copy is
+// dropped: the shift was the only reader of the copy, and it overwrites Rb
+// with the same value x86 computes. When the shift's count is CL and Rb is
+// RCX the count would alias the dropped copy, so that shape is refused.
+//
+// Both folds only ever remove a MOVQ and change which register a shift reads;
+// nothing is reordered, so the flag analyses, which key on node index, are
+// unaffected, and a MOVQ never produces flags.
+func shiftFolds(nodes []ir.Node) (map[int]shiftFold, map[int]bool) {
+	folds := make(map[int]shiftFold)
+	dropped := make(map[int]bool)
+	// next returns the index of the next instruction after k in the same
+	// straight-line run, or -1 at a label or the end of the function.
+	next := func(k int) int {
+		for k++; k < len(nodes); k++ {
+			switch nodes[k].(type) {
+			case *ir.Comment:
+				continue
+			case *ir.Instruction:
+				return k
+			default:
+				return -1
+			}
+		}
+		return -1
+	}
+	for j, n := range nodes {
+		mov, ok := n.(*ir.Instruction)
+		if !ok || mov.Opcode != "MOVQ" || len(mov.Operands) != 2 ||
+			!isFullGP(mov.Operands[0]) || !isFullGP(mov.Operands[1]) {
+			continue
+		}
+		src, dst := regFamily(mov.Operands[0]), regFamily(mov.Operands[1])
+		if src == dst {
+			continue
+		}
+		if dst == rcx {
+			if k, cnt := countFold(nodes, next, j, src); k >= 0 {
+				f := folds[k]
+				f.count = cnt
+				folds[k] = f
+				dropped[j] = true
+				continue
+			}
+			// Not a count copy; it may still be the source of a shift with
+			// an immediate count, which the source fold handles.
+		}
+		if k, s := sourceFold(nodes, next, j, src, dst); k >= 0 {
+			f := folds[k]
+			f.src = s
+			folds[k] = f
+			dropped[j] = true
+		}
+	}
+	return folds, dropped
+}
+
+// countFold checks the count-fold conditions from the "MOVQ Rs, CX" at node j
+// (see shiftFolds) and returns the shift's node index and the arm64 name of
+// Rs, or -1.
+func countFold(nodes []ir.Node, next func(int) int, j, src int) (int, string) {
+	k := next(j)
+	for ; k >= 0; k = next(k) {
+		ins := nodes[k].(*ir.Instruction)
+		if endsBlock(ins) {
+			return -1, ""
+		}
+		if readsFamily(ins, rcx) || writesFamily(ins, rcx) {
+			break
+		}
+		if writesFamily(ins, src) {
+			return -1, ""
+		}
+	}
+	if k < 0 {
+		return -1, ""
+	}
+	shift := nodes[k].(*ir.Instruction)
+	if !isTwoOperandShift(shift) || regFamily(shift.Operands[0]) != rcx ||
+		regFamily(shift.Operands[1]) == rcx {
+		return -1, ""
+	}
+	for m := next(k); m >= 0; m = next(m) {
+		ins := nodes[m].(*ir.Instruction)
+		if endsBlock(ins) {
+			return -1, ""
+		}
+		if writesFamily(ins, rcx) && !readsFamily(ins, rcx) {
+			return k, rename(nodes[j].(*ir.Instruction).Operands[0].(reg.Register))
+		}
+		if readsFamily(ins, rcx) || writesFamily(ins, rcx) {
+			return -1, ""
+		}
+	}
+	return -1, ""
+}
+
+// sourceFold checks the source-fold conditions from the "MOVQ Ra, Rb" at node
+// j (see shiftFolds) and returns the shift's node index and the arm64 name of
+// Ra, or -1.
+func sourceFold(nodes []ir.Node, next func(int) int, j, src, dst int) (int, string) {
+	for k := next(j); k >= 0; k = next(k) {
+		ins := nodes[k].(*ir.Instruction)
+		if endsBlock(ins) {
+			return -1, ""
+		}
+		if isTwoOperandShift(ins) && regFamily(ins.Operands[1]) == dst {
+			if regFamily(ins.Operands[0]) == dst {
+				return -1, "" // count in CL, destination RCX: the count aliases the copy
+			}
+			return k, rename(nodes[j].(*ir.Instruction).Operands[0].(reg.Register))
+		}
+		if readsFamily(ins, dst) || writesFamily(ins, dst) || writesFamily(ins, src) {
+			return -1, ""
+		}
+	}
+	return -1, ""
+}
+
+// setccFolds finds "zero r; ...; SETcc r8" runs where the SETcc's full-width
+// result is known: r is zeroed (XORQ/XORL r, r or MOVQ/MOVL $0, r), nothing
+// before the SETcc in the same straight-line run references r, and the
+// zeroing's own flags are not consumed (a zeroing XOR sets ZF on x86, and
+// zeroSelf would have to emit a TST for a consumer). The SETcc then writes the
+// whole register as 0 or 1, which is exactly the state x86 leaves, and the
+// zeroing is dropped. The zeroing MOVQ $0 would also have opened the constant
+// window; a consumer of that window reads r, which the scan refuses.
+func setccFolds(nodes []ir.Node, setflags map[int]bool, dropped map[int]bool) map[int]bool {
+	full := make(map[int]bool)
+	for j, n := range nodes {
+		zero, ok := n.(*ir.Instruction)
+		if !ok || len(zero.Operands) != 2 || setflags[j] {
+			continue
+		}
+		r := regFamily(zero.Operands[1])
+		if r < 0 {
+			continue
+		}
+		switch zero.Opcode {
+		case "XORQ", "XORL":
+			if regFamily(zero.Operands[0]) != r {
+				continue
+			}
+		case "MOVQ", "MOVL":
+			if v, isImm := immVal(zero.Operands[0]); !isImm || v != 0 {
+				continue
+			}
+		default:
+			continue
+		}
+		for k := j + 1; k < len(nodes); k++ {
+			ins, isInstr := nodes[k].(*ir.Instruction)
+			if _, isComment := nodes[k].(*ir.Comment); isComment {
+				continue
+			}
+			if !isInstr || endsBlock(ins) {
+				break
+			}
+			if !readsFamily(ins, r) && !writesFamily(ins, r) {
+				continue
+			}
+			if strings.HasPrefix(ins.Opcode, "SET") && !isHighByte(ins.Operands[0]) &&
+				regFamily(ins.Operands[0]) == r && !readsFamily(ins, r) {
+				full[k] = true
+				dropped[j] = true
+			}
+			break
+		}
+	}
+	return full
 }

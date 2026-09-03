@@ -2100,3 +2100,110 @@ TEXT ·CmovAll(SB), NOSPLIT, $0-24
 	ORQ     SI, DX
 	MOVQ    DX, ret+16(FP)
 	RET
+
+// func ShlCountFold(x uint64, n uint64) uint64
+TEXT ·ShlCountFold(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ n+8(FP), DX
+	MOVQ DX, CX
+	MOVQ AX, BX
+	SHLQ CL, BX
+	MOVQ AX, CX
+	ADDQ CX, BX
+	ADDQ DX, BX
+	MOVQ BX, ret+16(FP)
+	RET
+
+// func ShrCountFold32(x uint64, n uint64) uint64
+TEXT ·ShrCountFold32(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ n+8(FP), DX
+	MOVQ DX, CX
+	MOVQ AX, BX
+	SHRL CL, BX
+	MOVQ AX, CX
+	ADDQ CX, BX
+	ADDQ DX, BX
+	MOVQ BX, ret+16(FP)
+	RET
+
+// func RolCountFold(x uint64, n uint64) uint64
+TEXT ·RolCountFold(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ n+8(FP), DX
+	MOVQ DX, CX
+	MOVQ AX, BX
+	ROLQ CL, BX
+	MOVQ AX, CX
+	ADDQ CX, BX
+	ADDQ DX, BX
+	MOVQ BX, ret+16(FP)
+	RET
+
+// func CountFoldRefusedRead(x uint64, n uint64) uint64
+TEXT ·CountFoldRefusedRead(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ n+8(FP), DX
+	MOVQ DX, CX
+	SHLQ CL, AX
+	ADDQ CX, AX
+	ADDQ DX, AX
+	MOVQ AX, ret+16(FP)
+	RET
+
+// func ShlCountSelf(n uint64) uint64
+TEXT ·ShlCountSelf(SB), NOSPLIT, $0-16
+	MOVQ n+0(FP), AX
+	MOVQ AX, CX
+	SHLQ CL, CX
+	ADDQ AX, CX
+	MOVQ CX, ret+8(FP)
+	RET
+
+// func SarCopyFold(x uint64) uint64
+TEXT ·SarCopyFold(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	MOVQ AX, CX
+	SARQ $0x03, CX
+	ADDQ AX, CX
+	MOVQ CX, ret+8(FP)
+	RET
+
+// func ShlCopyFoldCX(x uint64) uint64
+TEXT ·ShlCopyFoldCX(SB), NOSPLIT, $0-16
+	MOVQ x+0(FP), AX
+	MOVQ AX, CX
+	SHLQ $0x02, CX
+	ADDQ AX, CX
+	MOVQ CX, ret+8(FP)
+	RET
+
+// func AdcAccumQ(x uint64, acc uint64) uint64
+TEXT ·AdcAccumQ(SB), NOSPLIT, $0-24
+	MOVQ x+0(FP), AX
+	MOVQ acc+8(FP), CX
+	CMPQ AX, $0x04
+	ADCQ $+0, CX
+	MOVQ CX, ret+16(FP)
+	RET
+
+// func SetGeZeroMov(a uint64, b uint64) uint64
+TEXT ·SetGeZeroMov(SB), NOSPLIT, $0-24
+	MOVQ  a+0(FP), AX
+	MOVQ  b+8(FP), CX
+	MOVQ  $0x00000000, DX
+	CMPQ  AX, CX
+	SETGE DL
+	MOVQ  DX, ret+16(FP)
+	RET
+
+// func SetGeRefusedRead(a uint64, b uint64) uint64
+TEXT ·SetGeRefusedRead(SB), NOSPLIT, $0-24
+	MOVQ  a+0(FP), AX
+	MOVQ  b+8(FP), CX
+	XORQ  DX, DX
+	ADDQ  DX, AX
+	CMPQ  AX, CX
+	SETGE DL
+	MOVQ  DX, ret+16(FP)
+	RET

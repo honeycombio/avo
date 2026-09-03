@@ -331,3 +331,23 @@ func SetAll(a uint64, b uint64) uint64
 func JmpAll(a uint64, b uint64) uint64
 
 func CmovAll(a uint64, b uint64) uint64
+
+func ShlCountFold(x uint64, n uint64) uint64
+
+func ShrCountFold32(x uint64, n uint64) uint64
+
+func RolCountFold(x uint64, n uint64) uint64
+
+func CountFoldRefusedRead(x uint64, n uint64) uint64
+
+func ShlCountSelf(n uint64) uint64
+
+func SarCopyFold(x uint64) uint64
+
+func ShlCopyFoldCX(x uint64) uint64
+
+func AdcAccumQ(x uint64, acc uint64) uint64
+
+func SetGeZeroMov(a uint64, b uint64) uint64
+
+func SetGeRefusedRead(a uint64, b uint64) uint64
