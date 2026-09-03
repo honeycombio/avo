@@ -33,6 +33,10 @@ func TestArith(t *testing.T) {
 		{"RolCL", RolCL, func(x, n uint64) uint64 { return bits.RotateLeft64(x, int(n&63)) }},
 		{"ZeroExt32", ZeroExt32, func(x uint64) uint64 { return uint64(uint32(x)) + x }},
 		{"HighByte", HighByte, func(x uint64) uint64 { return (x >> 8) & 0xff }},
+		{"ShiftExtractByte64Lo", ShiftExtractByte64Lo, func(x uint64) uint64 { return x&0xff + x }},
+		{"ShiftExtractByte64Mid", ShiftExtractByte64Mid, func(x uint64) uint64 { return (x>>8)&0xff + x }},
+		{"ShiftExtractByte64Hi", ShiftExtractByte64Hi, func(x uint64) uint64 { return (x>>56)&0xff + x }},
+		{"ShiftExtractByte32", ShiftExtractByte32, func(x uint64) uint64 { return uint64((uint32(x)>>16)&0xff) + x }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -483,6 +487,18 @@ func TestOpcodeCoverage(t *testing.T) {
 		// BZHI's count is ctrl[7:0]: 256 masks to 0 bits, -1 masks to 255.
 		{"BzhiConst256", BzhiConst256, func(x uint64) uint64 { return 0 }},
 		{"BzhiConstNeg", BzhiConstNeg, func(x uint64) uint64 { return x }},
+		{"TestBSelfZero", TestBSelfZero, func(x uint64) uint64 {
+			if x&0xff == 0 {
+				return 1
+			}
+			return 0
+		}},
+		{"TestWSelfZero", TestWSelfZero, func(x uint64) uint64 {
+			if x&0xffff == 0 {
+				return 1
+			}
+			return 0
+		}},
 	}
 	for _, c := range unary {
 		t.Run(c.name, func(t *testing.T) {

@@ -307,8 +307,14 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 	for _, f := range bt {
 		fusedBranch[f.branch] = true
 	}
+	byteFold := shiftExtractFold(nodes)
 	p.constOK = false
 	for idx := 0; idx < len(nodes); idx++ {
+		if byteFold[idx] {
+			p.emitShiftExtractFold(nodes[idx].(*ir.Instruction), nodes[idx+1].(*ir.Instruction), nodes[idx+2].(*ir.Instruction))
+			idx += 2
+			continue
+		}
 		switch n := nodes[idx].(type) {
 		case ir.Label:
 			// The only other text from the IR that reaches the file verbatim.
@@ -1893,6 +1899,26 @@ func (p *arm64) lowerSubwordCompareEqNe(bits int, cmp string, a, b operand.Op) {
 // bits are always zero, so Z exactly reflects whether the low bits are all
 // zero, which is what EQ/NE tests.
 func (p *arm64) lowerSubwordTestEqNe(bits int, a, b operand.Op) {
+	// "TESTB/TESTW dst, dst" -- the same x86 register named on both sides -- is
+	// the idiom for "is dst zero?". AND(dst,dst) is dst, so the general path's
+	// two independent zero-extended copies are redundant: an immediate-masked
+	// TST directly against the original register reads the same Z bit. This
+	// needs no register materialization at all, unlike the two-operand case,
+	// where a and b may differ and each must be pinned to a specific scratch
+	// register before the compare.
+	if ra, ok := a.(reg.Register); ok {
+		if rb, ok := b.(reg.Register); ok && ra.Asm() == rb.Asm() {
+			mask := uint64(1)<<uint(bits) - 1
+			if isHighByte(a) {
+				// AH/BH/CH/DH occupy bits 15:8 of the arm64 register the low byte
+				// renames to (see isHighByte); shift the mask to match.
+				p.emit("TST $0x%x, %s", mask<<8, rename(ra))
+				return
+			}
+			p.emit("TST $0x%x, %s", mask, operandReg(a))
+			return
+		}
+	}
 	ra, rb := p.materializeEqNe(bits, a, b)
 	p.emit("TST %s, %s", rb, ra)
 }
@@ -2531,4 +2557,93 @@ func subwordSafeEqNe(nodes []ir.Node) map[int]bool {
 		safe[j] = any && eqne
 	}
 	return safe
+}
+
+// shiftExtractFold identifies straight-line "MOVQ/MOVL src, tmp; SHRQ/SHRL
+// $n, tmp; MOVBQZX/MOVBLZX tmp, tmp" triples and returns the set of node
+// indices where the triple starts. This is x86's two-address-register idiom
+// for extracting one byte at a fixed bit offset -- needed because x86 has no
+// single "extract this byte" instruction -- which arm64's UBFX does in one
+// step (see emitShiftExtractFold).
+//
+// The match is deliberately narrow: all three instructions must be strictly
+// adjacent (no comment, label, or other instruction between them -- unlike
+// subwordSafeEqNe/flagProducers above, this does not skip comments, so a
+// program that puts one there simply is not folded), and the extend must
+// write back into the EXACT register the shift shifted (tmp == its own
+// destination). That last restriction is what makes the fold provably safe
+// with no liveness scan: nothing between the three instructions ever reads
+// tmp (they are adjacent), and nothing after them can observe the shifted
+// intermediate value either, because the extend is the last write to that
+// register in the window and folding preserves that final value exactly --
+// UBFX computes the same bits the three instructions compute, just without
+// materializing the intermediate. A triple whose extend targets a DIFFERENT
+// register is refused outright rather than folded some other way: proving
+// that shape safe would require showing nothing downstream reads tmp's
+// shifted value, which this pass does not attempt.
+//
+// Flags are not reasoned about here because they do not need to be: SHRQ/SHRL
+// is not in flagSetter's table, so flagProducers already panics at generation
+// time if anything downstream ever consumed its flags, before this fold's
+// output is even considered. A program that reaches this pass without
+// panicking is one where that never happens.
+func shiftExtractFold(nodes []ir.Node) map[int]bool {
+	fold := make(map[int]bool)
+	for j := 0; j+2 < len(nodes); j++ {
+		mov, ok := nodes[j].(*ir.Instruction)
+		if !ok || (mov.Opcode != "MOVQ" && mov.Opcode != "MOVL") || len(mov.Operands) != 2 {
+			continue
+		}
+		movSrc, srcOK := mov.Operands[0].(reg.Register)
+		movTmp, tmpOK := mov.Operands[1].(reg.Register)
+		if !srcOK || !tmpOK || isHighByte(movSrc) || isHighByte(movTmp) {
+			continue
+		}
+		wantShr, wantExt, width := "SHRQ", "MOVBQZX", int64(64)
+		if mov.Opcode == "MOVL" {
+			wantShr, wantExt, width = "SHRL", "MOVBLZX", 32
+		}
+		shr, ok := nodes[j+1].(*ir.Instruction)
+		if !ok || shr.Opcode != wantShr || len(shr.Operands) != 2 {
+			continue
+		}
+		shiftAmt, ok := immVal(shr.Operands[0])
+		if !ok || shiftAmt < 0 || shiftAmt > width-8 {
+			continue
+		}
+		shrDst, ok := shr.Operands[1].(reg.Register)
+		if !ok || isHighByte(shrDst) || rename(shrDst) != rename(movTmp) {
+			continue
+		}
+		ext, ok := nodes[j+2].(*ir.Instruction)
+		if !ok || ext.Opcode != wantExt || len(ext.Operands) != 2 {
+			continue
+		}
+		extSrc, ok := ext.Operands[0].(reg.Register)
+		if !ok || isHighByte(extSrc) || rename(extSrc) != rename(movTmp) {
+			continue
+		}
+		extDst, ok := ext.Operands[1].(reg.Register)
+		if !ok || rename(extDst) != rename(movTmp) {
+			continue // only the self-referential form is folded; see doc comment
+		}
+		fold[j] = true
+	}
+	return fold
+}
+
+// emitShiftExtractFold emits the single-instruction collapse for a triple
+// shiftExtractFold matched at some index j: mov, shr and ext are
+// nodes[j], nodes[j+1] and nodes[j+2].
+func (p *arm64) emitShiftExtractFold(mov, shr, ext *ir.Instruction) {
+	shiftAmt, _ := immVal(shr.Operands[0]) // shiftExtractFold already validated this
+	// Neither UBFX nor any instruction it could plausibly be confused with
+	// writes NZCV (see arm64WritesNZCV), and shiftExtractFold's doc comment
+	// covers why nothing in this window can be a live flag producer, so there
+	// is nothing to set p.inProducer/p.inTransparent to but their neutral
+	// values.
+	p.inTransparent, p.transparentOp = false, ""
+	p.inProducer, p.producerOp, p.writerCount = false, "", 0
+	p.emit("UBFX $%d, %s, $8, %s", shiftAmt, operandReg(mov.Operands[0]), operandReg(ext.Operands[1]))
+	p.constOK = false
 }

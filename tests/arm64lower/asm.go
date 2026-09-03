@@ -127,6 +127,49 @@ func main() {
 		RET()
 	}
 
+	// ShiftExtractByte64/32: MOVQ/MOVL + SHRQ/SHRL $n + MOVBQZX/MOVBLZX, all
+	// writing back into the same register -- the x86 two-address idiom for
+	// extracting one byte at a fixed bit offset (see zstd/_generate/gen.go's
+	// "moB" comment), which the arm64 printer's shiftExtractFold collapses to
+	// one UBFX. Covers both operand widths and the shift-amount boundary
+	// (0 and width-8, the extremes shiftExtractFold accepts).
+	shiftExtractByte := func(name string, shift uint8) {
+		TEXT(name, NOSPLIT, "func(x uint64) uint64")
+		x := GP64()
+		Load(Param("x"), x)
+		tmp := GP64()
+		MOVQ(x, tmp)
+		SHRQ(operand.U8(shift), tmp)
+		MOVBQZX(tmp.As8(), tmp)
+		// x must stay live past the shift (its value is needed below), which is
+		// what forces the register allocator to keep it in a register separate
+		// from tmp instead of coalescing the MOVQ away -- reproducing the shape
+		// zstd/_generate/gen.go's "moB" site actually has (see the comment
+		// there: "copy ofState, its current value is needed below"). Without
+		// this, x and tmp end up in the same register, the MOVQ is elided
+		// before the printer ever sees it, and shiftExtractFold has no MOVQ
+		// node to match -- silently testing nothing.
+		ADDQ(x, tmp)
+		Store(tmp, ReturnIndex(0))
+		RET()
+	}
+	shiftExtractByte("ShiftExtractByte64Lo", 0)
+	shiftExtractByte("ShiftExtractByte64Mid", 8)
+	shiftExtractByte("ShiftExtractByte64Hi", 56)
+
+	TEXT("ShiftExtractByte32", NOSPLIT, "func(x uint64) uint64")
+	{
+		x := GP64()
+		Load(Param("x"), x)
+		tmp := GP64()
+		MOVL(x.As32(), tmp.As32())
+		SHRL(operand.U8(16), tmp.As32())
+		MOVBLZX(tmp.As8(), tmp.As32())
+		ADDQ(x, tmp) // keep x live past the shift; see shiftExtractByte above
+		Store(tmp, ReturnIndex(0))
+		RET()
+	}
+
 	// LoadIdx: indexed memory load (base+index*scale), lowered via a scratch ADD.
 	TEXT("LoadIdx", NOSPLIT, "func(p *[8]uint64, i uint64) uint64")
 	{
@@ -1133,6 +1176,22 @@ func main() {
 	bin("TestBZero", func(x, y, d reg.GPVirtual) {
 		XORQ(d, d)
 		TESTB(x.As8(), y.As8())
+		SETEQ(d.As8())
+	})
+
+	// TESTB/TESTW dst, dst -- the same register on both sides, x86's "is dst
+	// zero?" idiom -- is a special case inside lowerSubwordTestEqNe: it needs
+	// no zero-extended scratch copy, only an immediate-masked TST against the
+	// original register (see shiftExtractFold's sibling change in the same
+	// commit). Covers both widths.
+	un("TestBSelfZero", func(x, d reg.GPVirtual) {
+		XORQ(d, d)
+		TESTB(x.As8(), x.As8())
+		SETEQ(d.As8())
+	})
+	un("TestWSelfZero", func(x, d reg.GPVirtual) {
+		XORQ(d, d)
+		TESTW(x.As16(), x.As16())
 		SETEQ(d.As8())
 	})
 

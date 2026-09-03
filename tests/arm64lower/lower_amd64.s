@@ -76,6 +76,46 @@ TEXT ·HighByte(SB), NOSPLIT, $0-16
 	MOVQ    AX, ret+8(FP)
 	RET
 
+// func ShiftExtractByte64Lo(x uint64) uint64
+TEXT ·ShiftExtractByte64Lo(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVQ    AX, CX
+	SHRQ    $0x00, CX
+	MOVBQZX CL, CX
+	ADDQ    AX, CX
+	MOVQ    CX, ret+8(FP)
+	RET
+
+// func ShiftExtractByte64Mid(x uint64) uint64
+TEXT ·ShiftExtractByte64Mid(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVQ    AX, CX
+	SHRQ    $0x08, CX
+	MOVBQZX CL, CX
+	ADDQ    AX, CX
+	MOVQ    CX, ret+8(FP)
+	RET
+
+// func ShiftExtractByte64Hi(x uint64) uint64
+TEXT ·ShiftExtractByte64Hi(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVQ    AX, CX
+	SHRQ    $0x38, CX
+	MOVBQZX CL, CX
+	ADDQ    AX, CX
+	MOVQ    CX, ret+8(FP)
+	RET
+
+// func ShiftExtractByte32(x uint64) uint64
+TEXT ·ShiftExtractByte32(SB), NOSPLIT, $0-16
+	MOVQ    x+0(FP), AX
+	MOVL    AX, CX
+	SHRL    $0x10, CX
+	MOVBLZX CL, CX
+	ADDQ    AX, CX
+	MOVQ    CX, ret+8(FP)
+	RET
+
 // func LoadIdx(p *[8]uint64, i uint64) uint64
 TEXT ·LoadIdx(SB), NOSPLIT, $0-24
 	MOVQ p+0(FP), AX
@@ -1755,6 +1795,24 @@ TEXT ·TestBZero(SB), NOSPLIT, $0-24
 	TESTB AL, CL
 	SETEQ DL
 	MOVQ  DX, ret+16(FP)
+	RET
+
+// func TestBSelfZero(x uint64) uint64
+TEXT ·TestBSelfZero(SB), NOSPLIT, $0-16
+	MOVQ  x+0(FP), AX
+	XORQ  CX, CX
+	TESTB AL, AL
+	SETEQ CL
+	MOVQ  CX, ret+8(FP)
+	RET
+
+// func TestWSelfZero(x uint64) uint64
+TEXT ·TestWSelfZero(SB), NOSPLIT, $0-16
+	MOVQ  x+0(FP), AX
+	XORQ  CX, CX
+	TESTW AX, AX
+	SETEQ CL
+	MOVQ  CX, ret+8(FP)
 	RET
 
 // func VecCopyReg(dst *[16]byte, src *[16]byte)
