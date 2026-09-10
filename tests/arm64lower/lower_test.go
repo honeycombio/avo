@@ -381,6 +381,25 @@ func TestMovbExact(t *testing.T) {
 	}
 }
 
+// TestPrefetch covers the PREFETCH* lowerings: the hints must assemble in
+// every operand shape and leave both the address registers and the flags a
+// following branch reads untouched.
+func TestPrefetch(t *testing.T) {
+	var arr [64]uint64
+	for i := range arr {
+		arr[i] = uint64(i) * 0x9e3779b97f4a7c15
+	}
+	for _, i := range []uint64{0, 1, 7, 63, 64, 65, 1000, ^uint64(0)} {
+		want := arr[i&63]
+		if i&63 != 0 {
+			want++
+		}
+		if got := Prefetch(&arr, i); got != want {
+			t.Errorf("Prefetch(arr, %d) = %#x, want %#x", i, got, want)
+		}
+	}
+}
+
 // TestCMOVConditions covers the CMOVcc conditions enabled by the completed table.
 func TestCMOVConditions(t *testing.T) {
 	const c, d = uint64(0x1111), uint64(0x2222)

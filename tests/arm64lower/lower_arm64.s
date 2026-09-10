@@ -130,6 +130,37 @@ TEXT ·Copy16(SB), NOSPLIT, $0-16
 	FMOVQ F0, (R0)
 	RET
 
+// func Prefetch(p *[64]uint64, i uint64) uint64
+// Requires: MMX+
+TEXT ·Prefetch(SB), NOSPLIT, $0-24
+	MOVD p+0(FP), R0
+	MOVD i+8(FP), R1
+	AND  $0x3f, R1, R1
+	PRFM (R0), PLDL1KEEP
+	PRFM 64(R0), PLDL2KEEP
+	PRFM 32760(R0), PLDL3KEEP
+	PRFM 4(R0), PLDL1STRM
+	ADD  $260, R0, R15
+	PRFM (R15), PLDL1KEEP
+	ADD  $32768, R0, R15
+	PRFM (R15), PLDL1KEEP
+	ADD  $-64, R0, R15
+	PRFM (R15), PLDL1KEEP
+	ADD  R1<<3, R0, R15
+	PRFM (R15), PLDL1KEEP
+	ADD  R1, R0, R15
+	PRFM 8(R15), PLDL1KEEP
+	TST  R1, R1
+	MOVD (R0)(R1<<3), R2
+	ADD  R1<<3, R0, R15
+	PRFM 64(R15), PLDL1KEEP
+	BEQ  prefetch_done
+	ADD  $0x01, R2, R2
+
+prefetch_done:
+	MOVD R2, ret+16(FP)
+	RET
+
 // func LessS(a uint64, b uint64) uint64
 TEXT ·LessS(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0

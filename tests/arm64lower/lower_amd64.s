@@ -133,6 +133,31 @@ TEXT ·Copy16(SB), NOSPLIT, $0-16
 	MOVUPS X0, (AX)
 	RET
 
+// func Prefetch(p *[64]uint64, i uint64) uint64
+// Requires: MMX+
+TEXT ·Prefetch(SB), NOSPLIT, $0-24
+	MOVQ        p+0(FP), AX
+	MOVQ        i+8(FP), CX
+	ANDQ        $0x3f, CX
+	PREFETCHT0  (AX)
+	PREFETCHT1  64(AX)
+	PREFETCHT2  32760(AX)
+	PREFETCHNTA 4(AX)
+	PREFETCHT0  260(AX)
+	PREFETCHT0  32768(AX)
+	PREFETCHT0  -64(AX)
+	PREFETCHT0  (AX)(CX*8)
+	PREFETCHT0  8(AX)(CX*1)
+	TESTQ       CX, CX
+	MOVQ        (AX)(CX*8), DX
+	PREFETCHT0  64(AX)(CX*8)
+	JZ          prefetch_done
+	ADDQ        $0x01, DX
+
+prefetch_done:
+	MOVQ DX, ret+16(FP)
+	RET
+
 // func LessS(a uint64, b uint64) uint64
 TEXT ·LessS(SB), NOSPLIT, $0-24
 	MOVQ a+0(FP), AX

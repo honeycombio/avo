@@ -460,6 +460,7 @@ var arm64WritesNZCV = map[string]bool{
 	"BIC":  false, // BICS is the flag-setting form; this is not it
 	"MOVD": false, "MOVW": false, "MOVWU": false, "MOVH": false,
 	"MOVHU": false, "MOVB": false, "MOVBU": false,
+	"PRFM":  false, // a hint: no register, memory or flag effects
 	"FMOVD": false, "FMOVQ": false, "VMOV": false, "VEOR": false,
 	"VCNT": false, "VUADDLV": false,
 	// Test-and-branch: reads one bit of a register directly and writes no
@@ -852,6 +853,57 @@ func (p *arm64) memAsmW(m operand.Mem, width int) string {
 	return fmt.Sprintf("(%s)", scratchAddr)
 }
 
+// prefetchHints maps x86's temporal-locality prefetch hints to PRFM's. The
+// x86 hint names the nearest cache level the line should land in (T0 = all
+// levels, T1 = L2 and outward, T2 = L3 and outward, NTA = non-temporal);
+// arm64's PLDL<n>KEEP and PLDL1STRM say the same thing.
+var prefetchHints = map[string]string{
+	"PREFETCHT0":  "PLDL1KEEP",
+	"PREFETCHT1":  "PLDL2KEEP",
+	"PREFETCHT2":  "PLDL3KEEP",
+	"PREFETCHNTA": "PLDL1STRM",
+}
+
+// lowerPrefetch emits PRFM for a software prefetch hint. A prefetch never
+// faults, never writes a register and never touches NZCV, so nothing about
+// the address it names is a correctness hazard; the only constraint is what
+// Go's arm64 assembler accepts as the operand. Probed with Go 1.27.1 at the
+// boundaries: a base register with a displacement of 0 through 255 (the
+// unscaled 9-bit form) or a multiple of 8 from 256 through 32760 (the
+// 8-byte-scaled 12-bit form) assembles; 257, 260, 4095, 32761, any negative
+// displacement and any index register are rejected. Anything outside the
+// folded form goes through scratchAddr the way memAsmW does for an indexed
+// load, at the cost of one ADD -- generator-side code that cares should keep
+// prefetch operands to base or base+small-aligned-disp.
+func (p *arm64) lowerPrefetch(op string, src operand.Op) {
+	m, ok := src.(operand.Mem)
+	if !ok {
+		panic(fmt.Sprintf("arm64: %s expects a memory operand, got %s", op, src.Asm()))
+	}
+	m = frameAdjust(m)
+	if m.Symbol.Name != "" {
+		panic(fmt.Sprintf("arm64: %s of a symbol operand (%s) is not supported", op, src.Asm()))
+	}
+	base := rename(m.Base)
+	if m.Index != nil && m.Scale != 0 {
+		if sh := log2scale(m.Scale); sh == 0 {
+			p.emit("ADD %s, %s, %s", rename(m.Index), base, scratchAddr)
+		} else {
+			p.emit("ADD %s<<%d, %s, %s", rename(m.Index), sh, base, scratchAddr)
+		}
+		base = scratchAddr
+	}
+	if m.Disp < 0 || m.Disp > 32760 || (m.Disp%8 != 0 && m.Disp >= 256) {
+		p.emit("ADD $%d, %s, %s", m.Disp, base, scratchAddr)
+		base, m.Disp = scratchAddr, 0
+	}
+	if m.Disp != 0 {
+		p.emit("PRFM %d(%s), %s", m.Disp, base, prefetchHints[op])
+	} else {
+		p.emit("PRFM (%s), %s", base, prefetchHints[op])
+	}
+}
+
 func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	ops := i.Operands
 	switch i.Opcode {
@@ -861,6 +913,8 @@ func (p *arm64) lower(i *ir.Instruction, flags, subwordEqNeSafe bool) {
 	// ---- moves and loads ----
 	case "MOVQ":
 		p.lowerMove("MOVD", ops[0], ops[1])
+	case "PREFETCHT0", "PREFETCHT1", "PREFETCHT2", "PREFETCHNTA":
+		p.lowerPrefetch(i.Opcode, ops[0])
 	case "MOVL":
 		p.lowerMOVL(ops[0], ops[1])
 	case "MOVW":
@@ -2449,6 +2503,7 @@ func isFlagTransparent(op string) bool {
 	switch {
 	case strings.HasPrefix(op, "MOV"),
 		strings.HasPrefix(op, "LEA"),
+		strings.HasPrefix(op, "PREFETCH"), // hints; no architectural effect at all
 		strings.HasPrefix(op, "CMOV"),
 		strings.HasPrefix(op, "SET"), // reads flags, never writes them
 		strings.HasPrefix(op, "J"):   // JMP and the Jcc family

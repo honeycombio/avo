@@ -192,6 +192,40 @@ func main() {
 		RET()
 	}
 
+	// Prefetch: PREFETCHT0/T1/T2/NTA are hints with no architectural effect,
+	// so the reference is the load that follows. The value proves the
+	// lowering assembled, left the address registers alone and did not
+	// disturb the flags a following branch reads. The operand shapes cover
+	// every path lowerPrefetch takes: plain base, base+aligned disp (folded
+	// into PRFM), base+index and misaligned/large/negative disp (each through
+	// the scratch ADD).
+	TEXT("Prefetch", NOSPLIT, "func(p *[64]uint64, i uint64) uint64")
+	{
+		p := Load(Param("p"), GP64())
+		i := Load(Param("i"), GP64())
+		ANDQ(operand.Imm(63), i)
+		PREFETCHT0(operand.Mem{Base: p})
+		PREFETCHT1(operand.Mem{Base: p, Disp: 64})
+		PREFETCHT2(operand.Mem{Base: p, Disp: 32760})
+		PREFETCHNTA(operand.Mem{Base: p, Disp: 4})
+		PREFETCHT0(operand.Mem{Base: p, Disp: 260})
+		PREFETCHT0(operand.Mem{Base: p, Disp: 32768})
+		PREFETCHT0(operand.Mem{Base: p, Disp: -64})
+		PREFETCHT0(operand.Mem{Base: p, Index: i, Scale: 8})
+		PREFETCHT0(operand.Mem{Base: p, Index: i, Scale: 1, Disp: 8})
+		// A prefetch between a flag producer and its consumer must be
+		// transparent on both architectures.
+		TESTQ(i, i)
+		v := GP64()
+		MOVQ(operand.Mem{Base: p, Index: i, Scale: 8}, v)
+		PREFETCHT0(operand.Mem{Base: p, Index: i, Scale: 8, Disp: 64})
+		JZ(operand.LabelRef("prefetch_done"))
+		ADDQ(operand.Imm(1), v)
+		Label("prefetch_done")
+		Store(v, ReturnIndex(0))
+		RET()
+	}
+
 	// Condition helpers: each returns 1 if the condition holds, else 0,
 	// exercising a distinct branch mnemonic (including JGE, unused by zstd).
 	branch := func(name string, jmp func(operand.Op)) {
