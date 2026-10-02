@@ -1,4 +1,4 @@
-module github.com/mmcloughlin/avo
+module github.com/honeycombio/avo
 
 go 1.25.0
 

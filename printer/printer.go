@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mmcloughlin/avo/internal/stack"
-	"github.com/mmcloughlin/avo/ir"
+	"github.com/honeycombio/avo/internal/stack"
+	"github.com/honeycombio/avo/ir"
 )
 
 // Printer can produce output for an avo File.

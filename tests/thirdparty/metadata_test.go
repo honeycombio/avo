@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mmcloughlin/avo/internal/github"
-	"github.com/mmcloughlin/avo/internal/test"
+	"github.com/honeycombio/avo/internal/github"
+	"github.com/honeycombio/avo/internal/test"
 )
 
 var update = flag.Bool("update", false, "update project metadata")

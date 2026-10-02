@@ -9,9 +9,9 @@ import (
 	"go/types"
 	"math/rand"
 
-	. "github.com/mmcloughlin/avo/build"
-	. "github.com/mmcloughlin/avo/gotypes"
-	. "github.com/mmcloughlin/avo/reg"
+	. "github.com/honeycombio/avo/build"
+	. "github.com/honeycombio/avo/gotypes"
+	. "github.com/honeycombio/avo/reg"
 )
 
 var (

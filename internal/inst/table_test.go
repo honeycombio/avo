@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmcloughlin/avo/internal/gen"
-	"github.com/mmcloughlin/avo/internal/inst"
-	"github.com/mmcloughlin/avo/internal/test"
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/internal/gen"
+	"github.com/honeycombio/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/test"
+	"github.com/honeycombio/avo/printer"
 )
 
 func TestHaveInstructions(t *testing.T) {

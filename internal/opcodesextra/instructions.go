@@ -4,7 +4,7 @@ package opcodesextra
 import (
 	"sort"
 
-	"github.com/mmcloughlin/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/inst"
 )
 
 // sets of extra instructions.

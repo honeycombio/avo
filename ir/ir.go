@@ -3,11 +3,11 @@ package ir
 import (
 	"errors"
 
-	"github.com/mmcloughlin/avo/attr"
-	"github.com/mmcloughlin/avo/buildtags"
-	"github.com/mmcloughlin/avo/gotypes"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/attr"
+	"github.com/honeycombio/avo/buildtags"
+	"github.com/honeycombio/avo/gotypes"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/reg"
 )
 
 // Node is a part of a Function.

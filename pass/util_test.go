@@ -3,10 +3,10 @@ package pass_test
 import (
 	"testing"
 
-	"github.com/mmcloughlin/avo/build"
-	"github.com/mmcloughlin/avo/internal/test"
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/pass"
+	"github.com/honeycombio/avo/build"
+	"github.com/honeycombio/avo/internal/test"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/pass"
 )
 
 // BuildFunction is a helper to compile a build context containing a single

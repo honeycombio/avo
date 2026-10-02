@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mmcloughlin/avo/ir"
+	"github.com/honeycombio/avo/ir"
 )
 
 // LabelTarget populates the LabelTarget of the given function. This maps from

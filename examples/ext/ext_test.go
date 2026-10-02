@@ -4,7 +4,7 @@ import (
 	"testing"
 	"testing/quick"
 
-	"github.com/mmcloughlin/avo/examples/ext/ext"
+	"github.com/honeycombio/avo/examples/ext/ext"
 )
 
 //go:generate go run asm.go -out ext.s

@@ -3,12 +3,12 @@ package pass_test
 import (
 	"testing"
 
-	"github.com/mmcloughlin/avo/attr"
-	"github.com/mmcloughlin/avo/build"
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/pass"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/attr"
+	"github.com/honeycombio/avo/build"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/pass"
+	"github.com/honeycombio/avo/reg"
 )
 
 func TestZeroExtend32BitOutputs(t *testing.T) {

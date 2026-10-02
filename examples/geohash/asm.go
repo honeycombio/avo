@@ -3,8 +3,8 @@
 package main
 
 import (
-	. "github.com/mmcloughlin/avo/build"
-	. "github.com/mmcloughlin/avo/operand"
+	. "github.com/honeycombio/avo/build"
+	. "github.com/honeycombio/avo/operand"
 )
 
 func main() {

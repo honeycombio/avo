@@ -8,7 +8,7 @@ import (
 
 const (
 	// Package is the avo package import path.
-	Package = "github.com/mmcloughlin/avo"
+	Package = "github.com/honeycombio/avo"
 
 	// IRPackage is the package that defines intermediate representation types.
 	IRPackage = "ir"

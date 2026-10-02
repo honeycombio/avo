@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmcloughlin/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/inst"
 )
 
 func TestFunctionsDuplicateFormSignatures(t *testing.T) {

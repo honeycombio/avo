@@ -3,7 +3,7 @@ package buildtags_test
 import (
 	"fmt"
 
-	"github.com/mmcloughlin/avo/buildtags"
+	"github.com/honeycombio/avo/buildtags"
 )
 
 func ExampleParseConstraint() {

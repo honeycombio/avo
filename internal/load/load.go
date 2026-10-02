@@ -10,10 +10,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mmcloughlin/avo/internal/inst"
-	"github.com/mmcloughlin/avo/internal/opcodescsv"
-	"github.com/mmcloughlin/avo/internal/opcodesextra"
-	"github.com/mmcloughlin/avo/internal/opcodesxml"
+	"github.com/honeycombio/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/opcodescsv"
+	"github.com/honeycombio/avo/internal/opcodesextra"
+	"github.com/honeycombio/avo/internal/opcodesxml"
 )
 
 // This file is a mess. Some of this complexity is unavoidable, since the state

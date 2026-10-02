@@ -8,7 +8,7 @@ In this case, you will need to write the function stub yourself.
 ```go
 package ext
 
-import "github.com/mmcloughlin/avo/examples/ext/ext"
+import "github.com/honeycombio/avo/examples/ext/ext"
 
 // StructFieldB returns field B.
 func StructFieldB(e ext.Struct) byte
@@ -18,7 +18,7 @@ Then in place of the usual `TEXT` declaration we use `Implement` to state that w
 
 [embedmd]:# (asm.go go /.*Package.*/ /RET.*/)
 ```go
-	Package("github.com/mmcloughlin/avo/examples/ext")
+	Package("github.com/honeycombio/avo/examples/ext")
 	Implement("StructFieldB")
 	b := Load(Param("e").Field("B"), GP8())
 	Store(b, ReturnIndex(0))

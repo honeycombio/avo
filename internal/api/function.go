@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/mmcloughlin/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/inst"
 )
 
 // Function represents a function that constructs some collection of

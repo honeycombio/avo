@@ -3,8 +3,8 @@ package printer
 import (
 	"testing"
 
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/reg"
 )
 
 // TestFrameSlotBase checks that only AllocLocal's pseudo SP makes a frame slot.

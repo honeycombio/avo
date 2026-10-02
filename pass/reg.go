@@ -3,10 +3,10 @@ package pass
 import (
 	"errors"
 
-	"github.com/mmcloughlin/avo/gotypes"
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/gotypes"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/reg"
 )
 
 // ZeroExtend32BitOutputs applies the rule that "32-bit operands generate a

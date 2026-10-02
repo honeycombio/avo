@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmcloughlin/avo/build"
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/build"
+	"github.com/honeycombio/avo/printer"
 )
 
 func AssertPrintsLines(t *testing.T, ctx *build.Context, pb printer.Builder, expect []string) {

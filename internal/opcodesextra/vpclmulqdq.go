@@ -1,6 +1,6 @@
 package opcodesextra
 
-import "github.com/mmcloughlin/avo/internal/inst"
+import "github.com/honeycombio/avo/internal/inst"
 
 // vpclmulqdq is the "Vector Carry-less Multiplication" instruction set.
 var vpclmulqdq = []*inst.Instruction{

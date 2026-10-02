@@ -1,6 +1,6 @@
 package opcodesextra
 
-import "github.com/mmcloughlin/avo/internal/inst"
+import "github.com/honeycombio/avo/internal/inst"
 
 // pseudo is pseudo-ops supported by the Go assembler.
 var pseudo = []*inst.Instruction{

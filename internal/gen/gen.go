@@ -3,8 +3,8 @@ package gen
 import (
 	"go/format"
 
-	"github.com/mmcloughlin/avo/internal/inst"
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/internal/inst"
+	"github.com/honeycombio/avo/printer"
 )
 
 // Interface of an instruction code generator.

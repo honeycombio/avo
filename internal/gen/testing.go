@@ -1,9 +1,9 @@
 package gen
 
 import (
-	"github.com/mmcloughlin/avo/internal/api"
-	"github.com/mmcloughlin/avo/internal/inst"
-	"github.com/mmcloughlin/avo/internal/prnt"
+	"github.com/honeycombio/avo/internal/api"
+	"github.com/honeycombio/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/prnt"
 )
 
 // DeclareTestArguments prints a block of variables declaring a valid operand of

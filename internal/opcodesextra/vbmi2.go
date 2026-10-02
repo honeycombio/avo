@@ -1,7 +1,7 @@
 package opcodesextra
 
 import (
-	"github.com/mmcloughlin/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/inst"
 )
 
 // vbmi2 is the "Vector Bit Manipulation Instructions 2" instruction set.

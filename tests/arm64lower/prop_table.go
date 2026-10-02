@@ -2,7 +2,7 @@
 
 package arm64lower
 
-import "github.com/mmcloughlin/avo/tests/arm64lower/propspec"
+import "github.com/honeycombio/avo/tests/arm64lower/propspec"
 
 // propPrograms indexes the generated Prop<n> functions so the test can drive
 // them in a loop. avo's stub printer emits plain function declarations, so this

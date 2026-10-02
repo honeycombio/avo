@@ -10,8 +10,8 @@ import (
 	"runtime/pprof"
 	"strings"
 
-	"github.com/mmcloughlin/avo/pass"
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/pass"
+	"github.com/honeycombio/avo/printer"
 )
 
 // Config contains options for an avo main function.

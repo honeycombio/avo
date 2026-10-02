@@ -4,11 +4,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mmcloughlin/avo/build"
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/pass"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/build"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/pass"
+	"github.com/honeycombio/avo/reg"
 )
 
 func TestPruneSelfMoves(t *testing.T) {

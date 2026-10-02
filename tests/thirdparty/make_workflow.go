@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/mmcloughlin/avo/internal/prnt"
-	"github.com/mmcloughlin/avo/tests/thirdparty"
+	"github.com/honeycombio/avo/internal/prnt"
+	"github.com/honeycombio/avo/tests/thirdparty"
 )
 
 var (

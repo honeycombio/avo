@@ -3,7 +3,7 @@ package pass
 import (
 	"testing"
 
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/reg"
 )
 
 func TestAllocatorSimple(t *testing.T) {

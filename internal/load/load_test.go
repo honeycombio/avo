@@ -3,11 +3,11 @@ package load_test
 import (
 	"testing"
 
-	"github.com/mmcloughlin/avo/internal/gen"
-	"github.com/mmcloughlin/avo/internal/inst"
-	"github.com/mmcloughlin/avo/internal/load"
-	"github.com/mmcloughlin/avo/internal/test"
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/internal/gen"
+	"github.com/honeycombio/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/load"
+	"github.com/honeycombio/avo/internal/test"
+	"github.com/honeycombio/avo/printer"
 )
 
 func Load(t *testing.T) []inst.Instruction {

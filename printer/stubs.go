@@ -3,9 +3,9 @@ package printer
 import (
 	"go/format"
 
-	"github.com/mmcloughlin/avo/buildtags"
-	"github.com/mmcloughlin/avo/internal/prnt"
-	"github.com/mmcloughlin/avo/ir"
+	"github.com/honeycombio/avo/buildtags"
+	"github.com/honeycombio/avo/internal/prnt"
+	"github.com/honeycombio/avo/ir"
 )
 
 type stubs struct {

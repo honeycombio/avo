@@ -2,8 +2,8 @@
   <img src="logo.svg" width="40%" border="0" alt="avo" />
   <br />
   <img src="https://img.shields.io/github/actions/workflow/status/mmcloughlin/avo/ci.yml?style=flat-square" alt="Build Status" />
-  <a href="https://pkg.go.dev/github.com/mmcloughlin/avo"><img src="https://img.shields.io/badge/doc-reference-007d9b?logo=go&style=flat-square" alt="go.dev" /></a>
-  <a href="https://goreportcard.com/report/github.com/mmcloughlin/avo"><img src="https://goreportcard.com/badge/github.com/mmcloughlin/avo?style=flat-square" alt="Go Report Card" /></a>
+  <a href="https://pkg.go.dev/github.com/honeycombio/avo"><img src="https://img.shields.io/badge/doc-reference-007d9b?logo=go&style=flat-square" alt="go.dev" /></a>
+  <a href="https://goreportcard.com/report/github.com/honeycombio/avo"><img src="https://goreportcard.com/badge/github.com/honeycombio/avo?style=flat-square" alt="Go Report Card" /></a>
 </p>
 
 <p align="center">Generate x86 and arm64 Assembly with Go</p>
@@ -31,7 +31,7 @@ _Note: APIs subject to change while `avo` is still in an experimental phase. You
 Install `avo` with `go get`:
 
 ```
-$ go get -u github.com/mmcloughlin/avo
+$ go get -u github.com/honeycombio/avo
 ```
 
 `avo` assembly generators are pure Go programs. Here's a function that adds two `uint64` values:
@@ -41,7 +41,7 @@ $ go get -u github.com/mmcloughlin/avo
 
 package main
 
-import . "github.com/mmcloughlin/avo/build"
+import . "github.com/honeycombio/avo/build"
 
 func main() {
 	TEXT("Add", NOSPLIT, "func(x, y uint64) uint64")
