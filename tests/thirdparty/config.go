@@ -290,16 +290,24 @@ func (p *Package) Steps(c *Context) []*Step {
 	// Optional setup.
 	steps = append(steps, p.Setup...)
 
-	// Replace avo dependency.
-	const invalid = "v0.0.0-00010101000000-000000000000"
+	// Replace avo dependency. Third-party packages import the upstream module
+	// path, so rewrite their imports to this fork's module path first: a plain
+	// replace of the upstream path would load avo under two import paths.
+	const (
+		invalid  = "v0.0.0-00010101000000-000000000000"
+		upstream = "github.com/mmcloughlin/avo"
+		fork     = "github.com/honeycombio/avo"
+	)
 	moddir := filepath.Dir(p.Module)
 	modfile := filepath.Base(p.Module)
 	steps = append(steps, &Step{
 		Name:             "Avo Module Replacement",
 		WorkingDirectory: moddir,
 		Commands: []string{
-			"go mod edit -modfile=" + modfile + " -require=github.com/mmcloughlin/avo@" + invalid,
-			"go mod edit -modfile=" + modfile + " -replace=github.com/mmcloughlin/avo=" + c.AvoDirectory,
+			"grep -rlF --include='*.go' '" + upstream + "' . | xargs -r sed -i 's#" + upstream + "#" + fork + "#g'",
+			"go mod edit -modfile=" + modfile + " -droprequire=" + upstream,
+			"go mod edit -modfile=" + modfile + " -require=" + fork + "@" + invalid,
+			"go mod edit -modfile=" + modfile + " -replace=" + fork + "=" + c.AvoDirectory,
 			"go mod tidy -modfile=" + modfile,
 		},
 	})
