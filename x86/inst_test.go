@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/reg"
 )
 
 func TestCases(t *testing.T) {

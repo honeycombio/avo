@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mmcloughlin/avo/internal/api"
-	"github.com/mmcloughlin/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/api"
+	"github.com/honeycombio/avo/internal/inst"
 )
 
 // Enum is a generated enumeration type. This assists with mapping between the

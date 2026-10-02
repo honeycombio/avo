@@ -52,7 +52,7 @@ linters:
       rules:
         main:
           allow:
-            - github.com/mmcloughlin/avo
+            - github.com/honeycombio/avo
             - golang.org/x/
             - $gostd
     revive:
@@ -153,6 +153,6 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/mmcloughlin/avo)
+        - prefix(github.com/honeycombio/avo)
   exclusions:
     generated: lax

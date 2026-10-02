@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/reg"
 )
 
 func TestSymbolString(t *testing.T) {

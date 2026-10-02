@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/reg"
 )
 
 // reservedARM64 lists registers the lowering must never allocate or clobber,

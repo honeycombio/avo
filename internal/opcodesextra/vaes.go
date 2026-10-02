@@ -1,6 +1,6 @@
 package opcodesextra
 
-import "github.com/mmcloughlin/avo/internal/inst"
+import "github.com/honeycombio/avo/internal/inst"
 
 // vaes is the "Vector Advanced Encryption Standard" instruction set.
 var vaes = []*inst.Instruction{

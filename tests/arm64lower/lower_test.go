@@ -15,8 +15,8 @@ import (
 	"testing"
 	"testing/quick"
 
-	"github.com/mmcloughlin/avo/tests/arm64lower/condspec"
-	"github.com/mmcloughlin/avo/tests/arm64lower/propspec"
+	"github.com/honeycombio/avo/tests/arm64lower/condspec"
+	"github.com/honeycombio/avo/tests/arm64lower/propspec"
 )
 
 //go:generate go run asm.go -out lower_amd64.s -arm64 lower_arm64.s -stubs stub.go -arm64-promote-stack-slots
@@ -451,7 +451,7 @@ func TestPCAlign(t *testing.T) {
 // address modulo 1024 is the runtime one.
 func TestPCAlignSymbolAlignment(t *testing.T) {
 	const (
-		name  = "github.com/mmcloughlin/avo/tests/arm64lower.PCAlign"
+		name  = "github.com/honeycombio/avo/tests/arm64lower.PCAlign"
 		align = 1024
 	)
 	exe, err := os.Executable()

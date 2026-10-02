@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/printer"
 )
 
 // TestOutFlagWritesFile checks that -out (without -arch) writes to the named

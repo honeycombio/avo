@@ -5,8 +5,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
 )
 
 func TestLabelTarget(t *testing.T) {

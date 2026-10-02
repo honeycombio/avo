@@ -12,11 +12,11 @@ package main
 import (
 	"fmt"
 
-	. "github.com/mmcloughlin/avo/build"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/reg"
-	"github.com/mmcloughlin/avo/tests/arm64lower/condspec"
-	"github.com/mmcloughlin/avo/tests/arm64lower/propspec"
+	. "github.com/honeycombio/avo/build"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/reg"
+	"github.com/honeycombio/avo/tests/arm64lower/condspec"
+	"github.com/honeycombio/avo/tests/arm64lower/propspec"
 )
 
 func main() {

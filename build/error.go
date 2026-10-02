@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/mmcloughlin/avo/internal/stack"
-	"github.com/mmcloughlin/avo/src"
+	"github.com/honeycombio/avo/internal/stack"
+	"github.com/honeycombio/avo/src"
 )
 
 // Error represents an error during building, optionally tagged with the position at which it happened.

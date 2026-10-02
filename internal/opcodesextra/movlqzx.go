@@ -1,6 +1,6 @@
 package opcodesextra
 
-import "github.com/mmcloughlin/avo/internal/inst"
+import "github.com/honeycombio/avo/internal/inst"
 
 // MOVLQZX does not appear in either x86 CSV or Opcodes, but does appear in stdlib assembly.
 //

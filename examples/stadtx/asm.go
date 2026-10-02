@@ -5,9 +5,9 @@ package main
 import (
 	"strconv"
 
-	. "github.com/mmcloughlin/avo/build"
-	. "github.com/mmcloughlin/avo/operand"
-	. "github.com/mmcloughlin/avo/reg"
+	. "github.com/honeycombio/avo/build"
+	. "github.com/honeycombio/avo/operand"
+	. "github.com/honeycombio/avo/reg"
 )
 
 const (
@@ -37,7 +37,7 @@ func makelabels(name string, n int) []string {
 }
 
 func main() {
-	Package("github.com/mmcloughlin/avo/examples/stadtx")
+	Package("github.com/honeycombio/avo/examples/stadtx")
 	TEXT("Hash", NOSPLIT, "func(state *State, key []byte) uint64")
 	Doc("Hash computes the Stadtx hash.")
 

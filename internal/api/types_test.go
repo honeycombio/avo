@@ -4,7 +4,7 @@ import (
 	"go/token"
 	"testing"
 
-	"github.com/mmcloughlin/avo/internal/inst"
+	"github.com/honeycombio/avo/internal/inst"
 )
 
 func TestISAsIdentifier(t *testing.T) {

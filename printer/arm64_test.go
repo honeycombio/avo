@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmcloughlin/avo/build"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/printer"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/build"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/printer"
+	"github.com/honeycombio/avo/reg"
 )
 
 // twinTestContext builds a file with a generic/BMI2 twin pair and a

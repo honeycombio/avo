@@ -4,8 +4,8 @@ package pass
 import (
 	"io"
 
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/printer"
 )
 
 // Compile pass compiles an avo file. Upon successful completion the avo file

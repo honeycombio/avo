@@ -9,7 +9,7 @@ f=$(grep -oE 'NumFoldPrograms   = [0-9]+' propspec/propspec.go | grep -oE '[0-9]
 	echo
 	echo "package arm64lower"
 	echo
-	echo 'import "github.com/mmcloughlin/avo/tests/arm64lower/propspec"'
+	echo 'import "github.com/honeycombio/avo/tests/arm64lower/propspec"'
 	echo
 	echo "// propPrograms indexes the generated Prop<n> functions so the test can drive"
 	echo "// them in a loop. avo's stub printer emits plain function declarations, so this"

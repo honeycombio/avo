@@ -59,7 +59,7 @@ Struct fields can be accessed with the `Field()` method. Note that this _require
 
 [embedmd]:# (asm.go go /.*Package\(.*/)
 ```go
-	Package("github.com/mmcloughlin/avo/examples/args")
+	Package("github.com/honeycombio/avo/examples/args")
 ```
 
 This package contains the struct definition:

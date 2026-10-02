@@ -3,9 +3,9 @@ package printer_test
 import (
 	"testing"
 
-	"github.com/mmcloughlin/avo/build"
-	"github.com/mmcloughlin/avo/buildtags"
-	"github.com/mmcloughlin/avo/printer"
+	"github.com/honeycombio/avo/build"
+	"github.com/honeycombio/avo/buildtags"
+	"github.com/honeycombio/avo/printer"
 )
 
 func TestStubsPragmas(t *testing.T) {

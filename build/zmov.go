@@ -5,7 +5,7 @@ package build
 import (
 	"go/types"
 
-	"github.com/mmcloughlin/avo/operand"
+	"github.com/honeycombio/avo/operand"
 )
 
 func (c *Context) mov(a, b operand.Op, an, bn int, t *types.Basic) {

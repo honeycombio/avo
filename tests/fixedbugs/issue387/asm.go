@@ -4,8 +4,8 @@
 package main
 
 import (
-	. "github.com/mmcloughlin/avo/build"
-	. "github.com/mmcloughlin/avo/operand"
+	. "github.com/honeycombio/avo/build"
+	. "github.com/honeycombio/avo/operand"
 )
 
 // Float32 generates a function which indexes into an array of single-precision

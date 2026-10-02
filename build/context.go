@@ -7,12 +7,12 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/mmcloughlin/avo/attr"
-	"github.com/mmcloughlin/avo/buildtags"
-	"github.com/mmcloughlin/avo/gotypes"
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/reg"
+	"github.com/honeycombio/avo/attr"
+	"github.com/honeycombio/avo/buildtags"
+	"github.com/honeycombio/avo/gotypes"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/reg"
 )
 
 //go:generate avogen -output zinstructions.go build

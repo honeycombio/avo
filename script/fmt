@@ -1,6 +1,6 @@
 #!/bin/bash -ex
 
-repo="github.com/mmcloughlin/avo"
+repo="github.com/honeycombio/avo"
 
 # Files to apply formatting to. Exclude stadtx since some of it was imported
 # from the original repo.

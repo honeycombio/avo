@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/mmcloughlin/avo/internal/test"
+	"github.com/honeycombio/avo/internal/test"
 )
 
 func TestClientRepository(t *testing.T) {

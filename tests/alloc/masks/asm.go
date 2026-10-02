@@ -5,9 +5,9 @@ package main
 import (
 	"strconv"
 
-	. "github.com/mmcloughlin/avo/build"
-	. "github.com/mmcloughlin/avo/operand"
-	. "github.com/mmcloughlin/avo/reg"
+	. "github.com/honeycombio/avo/build"
+	. "github.com/honeycombio/avo/operand"
+	. "github.com/honeycombio/avo/reg"
 )
 
 // The goal of this test is to create a synthetic scenario in which register

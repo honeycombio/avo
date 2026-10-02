@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mmcloughlin/avo/ir"
+	"github.com/honeycombio/avo/ir"
 )
 
 func TestRequiredISAExtensions(t *testing.T) {

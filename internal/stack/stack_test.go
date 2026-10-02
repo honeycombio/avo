@@ -4,10 +4,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mmcloughlin/avo/internal/stack"
+	"github.com/honeycombio/avo/internal/stack"
 )
 
-const pkg = "github.com/mmcloughlin/avo/internal/stack_test"
+const pkg = "github.com/honeycombio/avo/internal/stack_test"
 
 func TestFramesFirst(t *testing.T) {
 	fs := stack.Frames(0, 1)

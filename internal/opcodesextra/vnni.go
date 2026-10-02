@@ -1,6 +1,6 @@
 package opcodesextra
 
-import "github.com/mmcloughlin/avo/internal/inst"
+import "github.com/honeycombio/avo/internal/inst"
 
 // vnni is the "Vector Neural Network Instructions" instruction set.
 var vnni = []*inst.Instruction{

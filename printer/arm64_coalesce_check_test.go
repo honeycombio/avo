@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
-	"github.com/mmcloughlin/avo/reg"
-	"github.com/mmcloughlin/avo/x86"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
+	"github.com/honeycombio/avo/reg"
+	"github.com/honeycombio/avo/x86"
 )
 
 var (

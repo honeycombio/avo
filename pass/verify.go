@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mmcloughlin/avo/ir"
-	"github.com/mmcloughlin/avo/operand"
+	"github.com/honeycombio/avo/ir"
+	"github.com/honeycombio/avo/operand"
 )
 
 // Verify pass validates an avo file.

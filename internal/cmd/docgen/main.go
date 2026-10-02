@@ -17,7 +17,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/mmcloughlin/avo/tests/thirdparty"
+	"github.com/honeycombio/avo/tests/thirdparty"
 )
 
 func main() {
