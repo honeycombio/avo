@@ -32,8 +32,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: xxh3/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: xxh3/avo
@@ -77,8 +79,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: go-sip13/_avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: go-sip13/_avo
@@ -123,8 +127,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: bls/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: bls/asm
@@ -162,8 +168,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: md5-simd/_gen
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: md5-simd/_gen
@@ -197,8 +205,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: blake3/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: blake3/avo
@@ -234,8 +244,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: reedsolomon/_gen
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: reedsolomon/_gen
@@ -272,8 +284,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: wyhash/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: wyhash/avo
@@ -307,8 +321,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: compress/huff0/_generate
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: compress/huff0/_generate
@@ -342,8 +358,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: compress/huff0/_generate
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: compress/huff0/_generate
@@ -377,8 +395,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: compress/s2/_generate
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: compress/s2/_generate
@@ -412,8 +432,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: compress/s2/_generate
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: compress/s2/_generate
@@ -447,8 +469,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: compress/zstd/_generate
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: compress/zstd/_generate
@@ -482,8 +506,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: compress/zstd/_generate
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: compress/zstd/_generate
@@ -533,8 +559,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: go-bloomindex/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: go-bloomindex/avo
@@ -581,8 +609,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: go-marvin32/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: go-marvin32/avo
@@ -634,8 +664,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: go-speck/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: go-speck/avo
@@ -687,8 +719,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: go-chaskey/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: go-chaskey/avo
@@ -735,8 +769,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: us/merkle/blake2b/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: us/merkle/blake2b/avo
@@ -770,8 +806,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: asm/build
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: asm
@@ -805,8 +843,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: lwcrypto/ascon/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: lwcrypto/ascon/asm
@@ -842,8 +882,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: lwcrypto/grain/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: lwcrypto/grain/asm
@@ -879,8 +921,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: curve25519-voi/internal/asm/amd64
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: curve25519-voi/internal/asm/amd64
@@ -914,8 +958,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: deoxysii/internal/hardware/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: deoxysii/internal/hardware/asm
@@ -949,8 +995,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: crypto/curve25519/internal/field/_asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: crypto/curve25519/internal/field/_asm
@@ -984,8 +1032,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: edwards25519/field/_asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: edwards25519/field/_asm
@@ -1024,8 +1074,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: blake3/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: blake3/avo
@@ -1059,8 +1111,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: md4/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: md4
@@ -1101,8 +1155,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: go/src/crypto/internal/fips140/bigmod/_asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: go
@@ -1143,8 +1199,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: go/src/crypto/internal/fips140/edwards25519/field/_asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: go
@@ -1178,8 +1236,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: circl/sign/dilithium/internal/common/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: circl/sign/dilithium/internal/common/asm
@@ -1213,8 +1273,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: circl/pke/kyber/internal/common/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: circl/pke/kyber/internal/common/asm
@@ -1248,8 +1310,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: circl/simd/keccakf1600/internal/asm
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: circl/simd/keccakf1600/internal/asm
@@ -1288,8 +1352,10 @@ jobs:
       - name: Avo Module Replacement
         working-directory: gopkg/util/xxhash3/internal/avo
         run: |
-          go mod edit -modfile=go.mod -require=github.com/mmcloughlin/avo@v0.0.0-00010101000000-000000000000
-          go mod edit -modfile=go.mod -replace=github.com/mmcloughlin/avo=${{ github.workspace }}/avo
+          grep -rlF --include='*.go' 'github.com/mmcloughlin/avo' . | xargs -r sed -i 's#github.com/mmcloughlin/avo#github.com/honeycombio/avo#g'
+          go mod edit -modfile=go.mod -droprequire=github.com/mmcloughlin/avo
+          go mod edit -modfile=go.mod -require=github.com/honeycombio/avo@v0.0.0-00010101000000-000000000000
+          go mod edit -modfile=go.mod -replace=github.com/honeycombio/avo=${{ github.workspace }}/avo
           go mod tidy -modfile=go.mod
       - name: Generate
         working-directory: gopkg/util/xxhash3/internal/avo
