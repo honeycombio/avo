@@ -677,6 +677,12 @@ func (p *arm64) function(f *ir.Function, twins map[string]twinPair) {
 			idx += 2
 			continue
 		}
+		if a.vecPair[idx] {
+			p.renames = p.coalesce[idx]
+			p.emitVecPairFold(nodes[idx].(*ir.Instruction), nodes[idx+1].(*ir.Instruction))
+			idx++
+			continue
+		}
 		p.emitNode(nodes, idx, a)
 	}
 	p.flush()
@@ -696,6 +702,7 @@ type functionAnalysis struct {
 	bt          map[int]btFusion
 	fusedBranch map[int]bool
 	byteFold    map[int]bool
+	vecPair     map[int]bool
 	shifts      map[int]shiftFold
 	dropped     map[int]bool
 	setFull     map[int]bool
@@ -718,6 +725,7 @@ func analyzeFunction(nodes []ir.Node) functionAnalysis {
 		bt:          bt,
 		fusedBranch: fusedBranch,
 		byteFold:    shiftExtractFold(nodes),
+		vecPair:     vecPairFold(nodes),
 		shifts:      shifts,
 		dropped:     dropped,
 		setFull:     setccFolds(nodes, setflags, dropped),
@@ -731,6 +739,9 @@ func (a functionAnalysis) foldGroups(nodes []ir.Node) map[int]bool {
 	for idx := range nodes {
 		if a.byteFold[idx] {
 			g[idx], g[idx+1], g[idx+2] = true, true, true
+		}
+		if a.vecPair[idx] {
+			g[idx], g[idx+1] = true, true
 		}
 		if a.dropped[idx] || a.setFull[idx] || a.shifts[idx] != (shiftFold{}) {
 			g[idx] = true
@@ -888,6 +899,7 @@ var arm64WritesNZCV = map[string]bool{
 	"MOVHU": false, "MOVB": false, "MOVBU": false,
 	"PRFM":  false, // a hint: no register, memory or flag effects
 	"FMOVD": false, "FMOVQ": false, "VMOV": false, "VEOR": false,
+	"FLDPQ": false, "FSTPQ": false,
 	"VCNT": false, "VUADDLV": false,
 	// Test-and-branch: reads one bit of a register directly and writes no
 	// flags at all. See btPairs for why that is sound here.
@@ -3344,6 +3356,96 @@ func (p *arm64) emitShiftExtractFold(mov, shr, ext *ir.Instruction) {
 	p.inTransparent, p.transparentOp = false, ""
 	p.inProducer, p.producerOp, p.writerCount = false, "", 0
 	p.emitf("UBFX $%d, %s, $8, %s", shiftAmt, p.operandReg(mov.Operands[0]), p.operandReg(ext.Operands[1]))
+	p.constOK = false
+}
+
+// vecPairFold finds adjacent 16-byte vector moves that arm64 can issue as one
+// load or store pair: "MOVUPS d(base), X; MOVUPS d+16(base), Y" becomes
+// "FLDPQ d(base), (X, Y)" and the store form becomes FSTPQ. It returns the
+// index of the first move of each pair.
+//
+// A pair is formed only when both moves are loads, or both are stores, with
+// the same base register, no index or symbol, displacements d and d+16, and d
+// a multiple of 16 inside LDP/STP's signed 7-bit scaled range. The two moves
+// must be adjacent instructions, so no label (a join point) and no other
+// instruction sits between them. Loads must target different registers: LDP
+// with the same register twice is CONSTRAINED UNPREDICTABLE. A load cannot
+// change its own base here because the destination is a vector register. SP
+// bases are left alone so frame-slot handling never sees a paired access.
+func vecPairFold(nodes []ir.Node) map[int]bool {
+	fold := make(map[int]bool)
+	for j := 0; j+1 < len(nodes); j++ {
+		a, ok := vecMove(nodes[j])
+		if !ok {
+			continue
+		}
+		b, ok := vecMove(nodes[j+1])
+		if !ok || a.load != b.load {
+			continue
+		}
+		if a.mem.Base.Asm() != b.mem.Base.Asm() || b.mem.Disp != a.mem.Disp+16 {
+			continue
+		}
+		if d := a.mem.Disp; d%16 != 0 || d < -1024 || d > 1008 {
+			continue
+		}
+		if a.load && a.vec.Asm() == b.vec.Asm() {
+			continue
+		}
+		fold[j] = true
+		j++ // a move belongs to at most one pair
+	}
+	return fold
+}
+
+// vecMoveOp is one 16-byte vector load or store vecPairFold may pair.
+type vecMoveOp struct {
+	load bool
+	mem  operand.Mem
+	vec  reg.Register
+}
+
+func vecMove(n ir.Node) (vecMoveOp, bool) {
+	in, ok := n.(*ir.Instruction)
+	if !ok || len(in.Operands) != 2 || len(in.Suffixes) != 0 {
+		return vecMoveOp{}, false
+	}
+	switch in.Opcode {
+	case "MOVUPS", "MOVOU", "MOVOA":
+	default:
+		return vecMoveOp{}, false
+	}
+	m, load := in.Operands[0].(operand.Mem)
+	v, vok := in.Operands[1].(reg.Register)
+	if !load {
+		var mok bool
+		m, mok = in.Operands[1].(operand.Mem)
+		v, vok = in.Operands[0].(reg.Register)
+		if !mok {
+			return vecMoveOp{}, false
+		}
+	}
+	if !vok || m.Base == nil || m.Index != nil || m.Symbol.Name != "" || m.Base.Asm() == "SP" {
+		return vecMoveOp{}, false
+	}
+	if _, isGP := m.Base.(reg.GP); !isGP {
+		return vecMoveOp{}, false
+	}
+	return vecMoveOp{load: load, mem: m, vec: v}, true
+}
+
+// emitVecPairFold emits the FLDPQ or FSTPQ for a pair vecPairFold matched:
+// first and second are nodes[j] and nodes[j+1]. Neither touches NZCV.
+func (p *arm64) emitVecPairFold(first, second *ir.Instruction) {
+	p.inTransparent, p.transparentOp = false, ""
+	p.inProducer, p.producerOp, p.writerCount = false, "", 0
+	a, _ := vecMove(first)
+	b, _ := vecMove(second)
+	if a.load {
+		p.emitf("FLDPQ %s, (%s, %s)", p.memAsm(a.mem), vecAsF(a.vec), vecAsF(b.vec))
+	} else {
+		p.emitf("FSTPQ (%s, %s), %s", vecAsF(a.vec), vecAsF(b.vec), p.memAsm(a.mem))
+	}
 	p.constOK = false
 }
 
